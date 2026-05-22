@@ -46,7 +46,7 @@ def apply_search_filters(query, search_string: str, columns: list):
     return query
 
 
-"""------------------------------------------ GET ENDPOINS -----------------------------------------------"""
+""" ------------------------------------------ GET ENDPOINS ----------------------------------------------- """
 
 @app.route("/api/products/free", methods=["GET"])
 def get_free_products():
