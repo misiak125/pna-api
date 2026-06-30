@@ -5,6 +5,7 @@ from sqlalchemy import create_engine, or_, func, desc
 from sqlalchemy.orm import sessionmaker, scoped_session
 from datetime import datetime
 
+from utils import *
 
 """ ---------------------- DB configuration ------------------------- """
 load_dotenv()
@@ -30,23 +31,19 @@ def shutdown_session(exception=None):
     """Automatic session closer"""
     db_session.remove()
 
-def apply_search_filters(query, search_string: str, columns: list):
-    """
-    Edits query by adding a requirement for every word form 
-    search_string to appear in any column.
-    """
-    if not search_string:
-        return query
-    
-    words = search_string.strip().split()
-    for word in words:
-        search_term = f"%{word}%"
-        or_conditions = [func.cast(col, String).ilike(search_term) for col in columns]
-        query = query.filter(or_(*or_conditions))
-    return query
-
 
 """ ------------------------------------------ GET ENDPOINS ----------------------------------------------- """
+
+@app.route("/api/sync-status", methods=["GET"])
+def get_sync_status():
+    """
+    Returns datetime of last change in database.
+    """
+    state = db_session.query(AppState).first()
+    if not state:
+        return jsonify({"last_update": "1970-01-01T00:00:00"})
+    return jsonify({"last_update": state.last_update.isoformat()})
+
 
 @app.route("/api/products/free", methods=["GET"])
 def get_free_products():
@@ -360,7 +357,7 @@ def add_new_customer():
             added_on=datetime.now()
         )
         db_session.add(new_customer)
-        db_session.commit()
+        db_commit_update(db_session)
         return jsonify({"id": new_customer.id, "message": "Klient dodany"}), 201
     except Exception as e:
         db_session.rollback()
@@ -402,7 +399,7 @@ def make_new_reservation():
             string_order_id=data.get("string_order_id")
         )
         db_session.add(new_reservation)
-        db_session.commit()
+        db_commit_update(db_session)
         return jsonify({"message": "Rezerwacja zakończona sukcesem"}), 201
     except Exception as e:
         db_session.rollback()
@@ -416,9 +413,9 @@ def add_colour():
     """
     data = request.get_json()
     try:
-        new_colour = Colour(name=data.get("name"))
+        new_colour = Colour(name=str(data.get("name")).upper())
         db_session.add(new_colour)
-        db_session.commit()
+        db_commit_update(db_session)
         return jsonify({"message": "Dodano kolor"}), 201
     except Exception as e:
         db_session.rollback()
@@ -434,7 +431,7 @@ def drop_colour(name):
         col = db_session.query(Colour).filter(Colour.name == name).first()
         if col:
             db_session.delete(col)
-            db_session.commit()
+            db_commit_update(db_session)
             return jsonify({"message": "Usunięto kolor"}), 200
     
         return jsonify({"error": "Kolor nie istnieje."}), 404
@@ -450,9 +447,9 @@ def add_brand():
     """
     data = request.get_json()
     try:
-        new_brand = Brand(name=data.get("name"))
+        new_brand = Brand(name=str(data.get("name")).upper())
         db_session.add(new_brand)
-        db_session.commit()
+        db_commit_update(db_session)
         return jsonify({"message": "Dodano markę"}), 201
     except Exception as e:
         db_session.rollback()
@@ -467,7 +464,7 @@ def drop_brand(name):
         brand = db_session.query(Brand).filter(Brand.name == name).first()
         if brand:
             db_session.delete(brand)
-            db_session.commit()
+            db_commit_update(db_session)
             return jsonify({"message": "Usunięto markę"}), 200
         
         return jsonify({"error": "Marka nie istnieje."}), 404
@@ -483,15 +480,15 @@ def add_model():
     name (brand arg) linked to it to moedls table.
     """
     data = request.get_json()
-    brand_name = data.get("brand")
-    model_name = data.get("model")
+    brand_name = str(data.get("brand")).upper()
+    model_name = str(data.get("model")).upper()
     try:
         brand = db_session.query(Brand).filter(Brand.name == brand_name).first()
         if not brand:
             return jsonify({"error": "Marka nie istnieje."}), 404
         new_model = Model(name=model_name, brand_id=brand.id, namehash=f"{brand.id}$^{model_name}")
         db_session.add(new_model)
-        db_session.commit()
+        db_commit_update(db_session)
         return jsonify({"message": "Dodano model"}), 201
     except Exception as e:
         db_session.rollback()
@@ -512,7 +509,7 @@ def drop_model():
         model = db_session.query(Model).filter(Model.name == model_name).filter(Model.brand_id == brand.id).first()
         if model:
             db_session.delete(model)
-            db_session.commit()
+            db_commit_update(db_session)
             return jsonify({"message": "Usunięto kolor"}), 200
         
         return jsonify({"message": "Nie ma takiego modelu"}), 404
@@ -546,7 +543,7 @@ def edit_product(product_id):
         if exp_deliv:
             product.expected_delivery = datetime.strptime(exp_deliv, "%Y-%m-%dT%H:%M:%S")
             
-        db_session.commit()
+        db_commit_update(db_session)
         return jsonify({"message": "Zaktualizowano produkt"})
     except Exception as e:
         db_session.rollback()
@@ -560,7 +557,7 @@ def drop_product(product_id):
     try:
         product = db_session.query(Product).filter(Product.id == product_id).first()
         db_session.delete(product)
-        db_session.commit()
+        db_commit_update(db_session)
         return jsonify({"message": "Usunięto produkt"})
     except Exception as e:
         db_session.rollback()
@@ -591,7 +588,7 @@ def edit_reservation(reservation_id):
         reservation.delivery = data.get("delivery", reservation.delivery)
         reservation.payment_method = data.get("payment_method", reservation.payment_method)
 
-        db_session.commit()
+        db_commit_update(db_session)
         return jsonify({"message": "Zaktualizowano rezerwację"})
     except Exception as e:
         db_session.rollback()
@@ -611,7 +608,7 @@ def drop_reservation(reservation_id):
         if res:
             db_session.delete(res)
             
-        db_session.commit()
+        db_commit_update(db_session)
         return jsonify({"message": "Usunięto rezerwację i przywrócono cenę"})
     except Exception as e:
         db_session.rollback()
