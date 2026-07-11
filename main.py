@@ -4,8 +4,26 @@ from flask import Flask, request, jsonify
 from sqlalchemy import create_engine, or_, func, desc
 from sqlalchemy.orm import sessionmaker, scoped_session
 from datetime import datetime
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 from utils import *
+
+""" ---------------------- limits configuration ------------------------- """
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["500 per day", "60 per minute"], 
+    storage_uri="memory://"
+)
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return jsonify({
+        "error": "Rate Limit exceeded.", 
+        "details": str(e.description)
+    }), 429
+
 
 """ ---------------------- DB configuration ------------------------- """
 load_dotenv()
@@ -441,6 +459,7 @@ def add_colour():
 
 @app.route("/api/colours/<name>", methods=["DELETE"])
 @require_apikey
+@limiter.limit("2 per minute")
 def drop_colour(name):
     """ 
     Drops colour (name arg) from colours table.
@@ -476,6 +495,7 @@ def add_brand():
 
 @app.route("/api/brands/<name>", methods=["DELETE"])
 @require_apikey
+@limiter.limit("2 per minute")
 def drop_brand(name):
     """ 
     Drops brand (name arg) from brands table.
@@ -517,6 +537,7 @@ def add_model():
 
 @app.route("/api/models/", methods=["DELETE"])
 @require_apikey
+@limiter.limit("2 per minute")
 def drop_model():
     """ 
     Drops model (model arg) with brand (brand arg) from models table.
@@ -542,6 +563,7 @@ def drop_model():
 
 @app.route("/api/products/<int:product_id>", methods=["PUT"])
 @require_apikey
+@limiter.limit("2 per minute")
 def edit_product(product_id):
     """ 
     Edits product of product_id arg with args given.
@@ -574,6 +596,7 @@ def edit_product(product_id):
 
 @app.route("/api/products/<int:product_id>", methods=["DELETE"])
 @require_apikey
+@limiter.limit("2 per minute")
 def drop_product(product_id):
     """
     Drops product of product_id arg.
@@ -590,6 +613,7 @@ def drop_product(product_id):
 
 @app.route("/api/reservations/<int:reservation_id>", methods=["PUT"])
 @require_apikey
+@limiter.limit("2 per minute")
 def edit_reservation(reservation_id):
     """ 
     Edits reservation of reservation_id arg with args given.
@@ -621,6 +645,7 @@ def edit_reservation(reservation_id):
 
 @app.route("/api/reservations/<int:reservation_id>", methods=["DELETE"])
 @require_apikey
+@limiter.limit("2 per minute")
 def drop_reservation(reservation_id):
     """
     Drops reservaion of reservation_id.
