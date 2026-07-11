@@ -6,8 +6,43 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from datetime import datetime
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+import logging
+from logging.handlers import RotatingFileHandler
 
 from utils import *
+
+
+""" ---------------------- logging configuration ------------------------- """
+if not os.path.exists('logs'):
+    os.mkdir('logs')
+
+# saving logs to app.log (max 1MB oer file, max 10 old files)
+file_handler = RotatingFileHandler('logs/app.log', maxBytes=1024000, backupCount=10)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+))
+file_handler.setLevel(logging.INFO)
+
+app.logger.addHandler(file_handler)
+app.logger.setLevel(logging.INFO)
+app.logger.info('Starting server API PNA')
+
+@app.errorhandler(Exception)
+def handle_unhandled_exception(e):
+    """
+    Global unhandled errors logger.
+    """
+    if isinstance(e, HTTPException):
+        return e
+
+    
+    app.logger.exception("[CRITICAL] Unhandled Exception:")
+    
+    
+    return jsonify({
+        "error": "Wystąpił nieoczekiwany błąd serwera."
+    }), 500
+
 
 """ ---------------------- limits configuration ------------------------- """
 limiter = Limiter(
@@ -58,10 +93,14 @@ def get_sync_status():
     """
     Returns datetime of last change in database.
     """
-    state = db_session.query(AppState).first()
-    if not state:
-        return jsonify({"last_update": "1970-01-01T00:00:00"})
-    return jsonify({"last_update": state.last_update.isoformat()})
+    try:
+        state = db_session.query(AppState).first()
+        if not state:
+            return jsonify({"last_update": "1970-01-01T00:00:00"})
+        return jsonify({"last_update": state.last_update.isoformat()})
+    except Exception as e:
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/products/free", methods=["GET"])
@@ -74,58 +113,62 @@ def get_free_products():
     Filters by showing only rows containing all words from search arg.
     Filters by year depending on show_year_free ("wszystkie" to show all)
     """
-    search = request.args.get("search", "")
-    split_dates = request.args.get("split_dates", "false").lower() == "true"
-    show_year_free = request.args.get("show_year_free", "wszystkie")
+    try:
+        search = request.args.get("search", "")
+        split_dates = request.args.get("split_dates", "false").lower() == "true"
+        show_year_free = request.args.get("show_year_free", "wszystkie")
 
-    if not split_dates:
-        query = db_session.query(
-            func.first(Product.id).label("first_id"),
-            Product.brand, Product.model, Product.year, Product.colour,
-            func.max(Product.price).label("max_price"),
-            func.count(Product.id).label("count"),
-            func.min(Product.expected_delivery).label("delivery")
-        ).outerjoin(Reservation).filter(
-            Reservation.id == None, 
-            Product.state != "Wydany"
-        ).group_by(Product.brand, Product.model, Product.colour, Product.year)
-    else:
-        query = db_session.query(
-            func.first(Product.id).label("first_id"),
-            Product.brand, Product.model, Product.year, Product.colour,
-            func.max(Product.price).label("max_price"),
-            func.count(Product.id).label("count"),
-            Product.expected_delivery.label("delivery")
-        ).outerjoin(Reservation).filter(
-            Reservation.id == None, 
-            Product.state != "Wydany"
-        ).group_by(Product.brand, Product.model, Product.colour, Product.year, Product.expected_delivery)
+        if not split_dates:
+            query = db_session.query(
+                func.first(Product.id).label("first_id"),
+                Product.brand, Product.model, Product.year, Product.colour,
+                func.max(Product.price).label("max_price"),
+                func.count(Product.id).label("count"),
+                func.min(Product.expected_delivery).label("delivery")
+            ).outerjoin(Reservation).filter(
+                Reservation.id == None, 
+                Product.state != "Wydany"
+            ).group_by(Product.brand, Product.model, Product.colour, Product.year)
+        else:
+            query = db_session.query(
+                func.first(Product.id).label("first_id"),
+                Product.brand, Product.model, Product.year, Product.colour,
+                func.max(Product.price).label("max_price"),
+                func.count(Product.id).label("count"),
+                Product.expected_delivery.label("delivery")
+            ).outerjoin(Reservation).filter(
+                Reservation.id == None, 
+                Product.state != "Wydany"
+            ).group_by(Product.brand, Product.model, Product.colour, Product.year, Product.expected_delivery)
 
-    if show_year_free != "wszystkie":
-        try:
-            query = query.filter(Product.year == int(show_year_free))
-        except ValueError:
-            pass
+        if show_year_free != "wszystkie":
+            try:
+                query = query.filter(Product.year == int(show_year_free))
+            except ValueError:
+                pass
 
-    columns_to_search = [
-        Product.brand, Product.model, Product.year, 
-        Product.colour, Product.expected_delivery
-    ]
-    query = apply_search_filters(query, search, columns_to_search)
-    query = query.order_by(func.lower(Product.brand), func.lower(Product.model), Product.year)
-    
-    results = query.all()
-    
-    output = []
-    for r in results:
-        output.append({
-            "first_free_id": r.first_id,
-            "brand": r.brand, "model": r.model, "year": r.year, 
-            "colour": r.colour, "count": r.count, 
-            "delivery": r.delivery.strftime('%d.%m.%Y') if r.delivery else "",
-            "price": r.max_price
-        })
-    return jsonify(output)
+        columns_to_search = [
+            Product.brand, Product.model, Product.year, 
+            Product.colour, Product.expected_delivery
+        ]
+        query = apply_search_filters(query, search, columns_to_search)
+        query = query.order_by(func.lower(Product.brand), func.lower(Product.model), Product.year)
+        
+        results = query.all()
+        
+        output = []
+        for r in results:
+            output.append({
+                "first_free_id": r.first_id,
+                "brand": r.brand, "model": r.model, "year": r.year, 
+                "colour": r.colour, "count": r.count, 
+                "delivery": r.delivery.strftime('%d.%m.%Y') if r.delivery else "",
+                "price": r.max_price
+            })
+        return jsonify(output)
+    except Exception as e:
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/products/all", methods=["GET"])
@@ -138,54 +181,58 @@ def get_all_products():
     Filters by year depending on show_year_all arg. ('wszystkie' for all)
     Filters out products with 'wydany' state if show_sold == false
     """
-    search = request.args.get("search", "")
-    show_sold = request.args.get("show_sold", "false").lower() == "true"
-    show_reserved = request.args.get("show_reserved", "wszystkie") # 'wszystkie', 'zarezerwowane', 'niezarezerwowane'
-    show_year_all = request.args.get("show_year_all", "wszystkie")
+    try:
+        search = request.args.get("search", "")
+        show_sold = request.args.get("show_sold", "false").lower() == "true"
+        show_reserved = request.args.get("show_reserved", "wszystkie") # 'wszystkie', 'zarezerwowane', 'niezarezerwowane'
+        show_year_all = request.args.get("show_year_all", "wszystkie")
 
-    query = db_session.query(Product, Reservation).outerjoin(Reservation)
+        query = db_session.query(Product, Reservation).outerjoin(Reservation)
 
-    if not show_sold:
-        query = query.filter(Product.state != "Wydany")
+        if not show_sold:
+            query = query.filter(Product.state != "Wydany")
 
-    if show_year_all != "wszystkie":
-        try:
-            query = query.filter(Product.year == int(show_year_all))
-        except ValueError:
-            pass
+        if show_year_all != "wszystkie":
+            try:
+                query = query.filter(Product.year == int(show_year_all))
+            except ValueError:
+                pass
 
-    if show_reserved == "zarezerwowane":
-        query = query.filter(Reservation.id.isnot(None))
-    elif show_reserved == "niezarezerwowane":
-        query = query.filter(Reservation.id.is_(None))
+        if show_reserved == "zarezerwowane":
+            query = query.filter(Reservation.id.isnot(None))
+        elif show_reserved == "niezarezerwowane":
+            query = query.filter(Reservation.id.is_(None))
 
-    columns_to_search = [
-        Product.brand, Product.model, Product.year, Product.colour, 
-        Product.order_id, Product.expected_delivery, Product.state
-    ]
-    query = apply_search_filters(query, search, columns_to_search)
-    
-    query = query.order_by(desc(Product.id))
+        columns_to_search = [
+            Product.brand, Product.model, Product.year, Product.colour, 
+            Product.order_id, Product.expected_delivery, Product.state
+        ]
+        query = apply_search_filters(query, search, columns_to_search)
+        
+        query = query.order_by(desc(Product.id))
 
-    results = query.all()
+        results = query.all()
 
-    output = []
-    for prod, res in results:
-        is_reserved = "TAK" if res else "NIE"
-        output.append({
-            "id": prod.id,
-            "brand": prod.brand,
-            "model": prod.model,
-            "year": prod.year,
-            "colour": prod.colour,
-            "price": prod.price,
-            "state": prod.state,
-            "added_on": prod.added_on.strftime("%d-%m-%Y %H:%M") if prod.added_on else "",
-            "is_reserved": is_reserved,
-            "delivery": prod.expected_delivery.strftime('%d.%m.%Y') if prod.expected_delivery else "",
-            "order_id": prod.order_id
-        })
-    return jsonify(output)
+        output = []
+        for prod, res in results:
+            is_reserved = "TAK" if res else "NIE"
+            output.append({
+                "id": prod.id,
+                "brand": prod.brand,
+                "model": prod.model,
+                "year": prod.year,
+                "colour": prod.colour,
+                "price": prod.price,
+                "state": prod.state,
+                "added_on": prod.added_on.strftime("%d-%m-%Y %H:%M") if prod.added_on else "",
+                "is_reserved": is_reserved,
+                "delivery": prod.expected_delivery.strftime('%d.%m.%Y') if prod.expected_delivery else "",
+                "order_id": prod.order_id
+            })
+        return jsonify(output)
+    except Exception as e:
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/customers", methods=["GET"])
@@ -195,22 +242,26 @@ def get_customers():
     Returns customers from customers table.
     Filters by showing only rows containing all words from search arg.
     """
-    search = request.args.get("search", "")
-    query = db_session.query(Customer).order_by(desc(Customer.id))
+    try:
+        search = request.args.get("search", "")
+        query = db_session.query(Customer).order_by(desc(Customer.id))
 
-    columns_to_search = [
-        Customer.id, Customer.name, Customer.phone, Customer.email, 
-        Customer.pesel, Customer.adress, Customer.company_name, Customer.nip
-    ]
-    query = apply_search_filters(query, search, columns_to_search)
+        columns_to_search = [
+            Customer.id, Customer.name, Customer.phone, Customer.email, 
+            Customer.pesel, Customer.adress, Customer.company_name, Customer.nip
+        ]
+        query = apply_search_filters(query, search, columns_to_search)
 
-    results = query.all()
-    
-    return jsonify([{
-        "id": c.id, "name": c.name, "phone": c.phone, "email": c.email,
-        "pesel": c.pesel, "nip": c.nip, "company_name": c.company_name,
-        "adress": c.adress, "added_on": c.added_on.strftime("%d-%m-%Y %H:%M") if c.added_on else ""
-    } for c in results])
+        results = query.all()
+        
+        return jsonify([{
+            "id": c.id, "name": c.name, "phone": c.phone, "email": c.email,
+            "pesel": c.pesel, "nip": c.nip, "company_name": c.company_name,
+            "adress": c.adress, "added_on": c.added_on.strftime("%d-%m-%Y %H:%M") if c.added_on else ""
+        } for c in results])
+    except Exception as e:
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/reservations", methods=["GET"])
@@ -222,42 +273,46 @@ def get_reservations():
     If show_finalized arg is false, hides reservations connected to 
     products of "wydany" state.
     """
-    search = request.args.get("search", "")
-    show_finalized = request.args.get("show_finalized", "false").lower() == "true"
+    try:
+        search = request.args.get("search", "")
+        show_finalized = request.args.get("show_finalized", "false").lower() == "true"
 
-    query = db_session.query(Reservation, Product, Customer)\
-              .join(Product)\
-              .join(Customer)
+        query = db_session.query(Reservation, Product, Customer)\
+                .join(Product)\
+                .join(Customer)
 
-    if not show_finalized:
-        query = query.filter(Product.state != "Wydany")
+        if not show_finalized:
+            query = query.filter(Product.state != "Wydany")
 
-    columns_to_search = [
-        Reservation.id, Customer.name, Reservation.date,
-        Product.brand, Product.model, Product.colour, Reservation.adnotation
-    ]
-    query = apply_search_filters(query, search, columns_to_search)
-    query = query.order_by(desc(Reservation.date))
+        columns_to_search = [
+            Reservation.id, Customer.name, Reservation.date,
+            Product.brand, Product.model, Product.colour, Reservation.adnotation
+        ]
+        query = apply_search_filters(query, search, columns_to_search)
+        query = query.order_by(desc(Reservation.date))
 
-    results = query.all()
-    
-    output = []
-    for res, prod, cust in results:
-        adnotation = res.adnotation or ""
-        adnotation_short = adnotation[:36] + "..." if len(adnotation) > 36 else adnotation[:36]
+        results = query.all()
         
-        output.append({
-            "reservation_id": res.id,
-            "order_id": res.string_order_id,
-            "customer_name": cust.name,
-            "date": res.date.strftime("%d-%m-%Y %H:%M") if res.date else "",
-            "brand": prod.brand,
-            "model": prod.model,
-            "colour": prod.colour,
-            "adnotation": adnotation_short,
-            "paid": res.paid
-        })
-    return jsonify(output)
+        output = []
+        for res, prod, cust in results:
+            adnotation = res.adnotation or ""
+            adnotation_short = adnotation[:36] + "..." if len(adnotation) > 36 else adnotation[:36]
+            
+            output.append({
+                "reservation_id": res.id,
+                "order_id": res.string_order_id,
+                "customer_name": cust.name,
+                "date": res.date.strftime("%d-%m-%Y %H:%M") if res.date else "",
+                "brand": prod.brand,
+                "model": prod.model,
+                "colour": prod.colour,
+                "adnotation": adnotation_short,
+                "paid": res.paid
+            })
+        return jsonify(output)
+    except Exception as e:
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/colours", methods=["GET"])
@@ -266,8 +321,12 @@ def get_colours():
     """
     Returns all colours from colours table.
     """
-    colours = db_session.query(Colour).order_by(Colour.name).all()
-    return jsonify([c.name for c in colours])
+    try:
+        colours = db_session.query(Colour).order_by(Colour.name).all()
+        return jsonify([c.name for c in colours])
+    except Exception as e:
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/brands", methods=["GET"])
@@ -276,8 +335,12 @@ def get_brands():
     """
     Returns all brands from brands table.
     """
-    brands = db_session.query(Brand).order_by(Brand.name).all()
-    return jsonify([b.name for b in brands])
+    try:
+        brands = db_session.query(Brand).order_by(Brand.name).all()
+        return jsonify([b.name for b in brands])
+    except Exception as e:
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/models", methods=["GET"])
@@ -287,16 +350,20 @@ def get_models():
     Returns all models form models table
     linked to brand (brand arg).
     """
-    brand_name = request.args.get("brand")
-    if not brand_name:
-        return jsonify([])
-    
-    brand = db_session.query(Brand).filter(Brand.name == brand_name).first()
-    if not brand:
-        return jsonify([])
+    try:
+        brand_name = request.args.get("brand")
+        if not brand_name:
+            return jsonify([])
         
-    models = db_session.query(Model).filter(Model.brand_id == brand.id).order_by(Model.name).all()
-    return jsonify([m.name for m in models])
+        brand = db_session.query(Brand).filter(Brand.name == brand_name).first()
+        if not brand:
+            return jsonify([])
+            
+        models = db_session.query(Model).filter(Model.brand_id == brand.id).order_by(Model.name).all()
+        return jsonify([m.name for m in models])
+    except Exception as e:
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/customers/<int:customer_id>", methods=["GET"])
@@ -305,20 +372,25 @@ def get_customer(customer_id):
     """
     Returns a customer of customer_id from customers table.
     """
-    customer = db_session.query(Customer).filter(Customer.id == customer_id).first()
-    if not customer:
-        return jsonify({"error", f"Klient o id {customer_id} nie isnieje"}), 404
-    return jsonify({
-            "id": customer.id,
-            "name": customer.name,
-            "phone": customer.phone,
-            "email": customer.email,
-            "added_on": customer.added_on,
-            "pesel": customer.pesel,
-            "nip": customer.nip,
-            "adress": customer.adress,
-            "company_name": customer.company_name
-        })
+    try:
+        customer = db_session.query(Customer).filter(Customer.id == customer_id).first()
+        if not customer:
+            return jsonify({"error", f"Klient o id {customer_id} nie isnieje"}), 404
+        return jsonify({
+                "id": customer.id,
+                "name": customer.name,
+                "phone": customer.phone,
+                "email": customer.email,
+                "added_on": customer.added_on,
+                "pesel": customer.pesel,
+                "nip": customer.nip,
+                "adress": customer.adress,
+                "company_name": customer.company_name
+            })
+    except Exception as e:
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": str(e)}), 400
+
 
 
 @app.route("/api/products/<int:product_id>", methods=["GET"])
@@ -327,16 +399,20 @@ def get_product(product_id):
     """
     Returns a product of product_id from products table.
     """
-    prod = db_session.query(Product).filter(Product.id == product_id).first()
-    if not prod:
-        return jsonify({"error": "Brak produktu"}), 404
-        
-    return jsonify({
-        "id": prod.id, "brand": prod.brand, "model": prod.model, 
-        "colour": prod.colour, "year": prod.year, "price": prod.price, 
-        "old_price": prod.old_price, "state": prod.state, "order_id": prod.order_id,
-        "expected_delivery": prod.expected_delivery.strftime('%Y-%m-%d') if prod.expected_delivery else None
-    })
+    try:
+        prod = db_session.query(Product).filter(Product.id == product_id).first()
+        if not prod:
+            return jsonify({"error": "Brak produktu"}), 404
+            
+        return jsonify({
+            "id": prod.id, "brand": prod.brand, "model": prod.model, 
+            "colour": prod.colour, "year": prod.year, "price": prod.price, 
+            "old_price": prod.old_price, "state": prod.state, "order_id": prod.order_id,
+            "expected_delivery": prod.expected_delivery.strftime('%Y-%m-%d') if prod.expected_delivery else None
+        })
+    except Exception as e:
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route("/api/reservations/<int:reservation_id>", methods=["GET"])
@@ -346,28 +422,32 @@ def get_reservation(reservation_id):
     Returns a reservation of reservation_id joined with 
     its customer and product from reservations table.
     """
-    res_tuple = db_session.query(Reservation, Product, Customer)\
-        .join(Product).join(Customer)\
-        .filter(Reservation.id == reservation_id).first()
-        
-    if not res_tuple:
-        return jsonify({"error": "Brak rezerwacji"}), 404
-        
-    res, prod, cust = res_tuple
-    return jsonify({
-        "reservation_id": res.id,
-        "customer_id": cust.id,
-        "product_id": prod.id,
-        "advance": res.advance,
-        "adnotation": res.adnotation,
-        "adnotation_pub": res.adnotation_pub,
-        "form": res.form,
-        "paid": res.paid,
-        "term": res.term,
-        "delivery": res.delivery,
-        "payment_method": res.payment_method,
-        "string_order_id": res.string_order_id
-    })
+    try:
+        res_tuple = db_session.query(Reservation, Product, Customer)\
+            .join(Product).join(Customer)\
+            .filter(Reservation.id == reservation_id).first()
+            
+        if not res_tuple:
+            return jsonify({"error": "Brak rezerwacji"}), 404
+            
+        res, prod, cust = res_tuple
+        return jsonify({
+            "reservation_id": res.id,
+            "customer_id": cust.id,
+            "product_id": prod.id,
+            "advance": res.advance,
+            "adnotation": res.adnotation,
+            "adnotation_pub": res.adnotation_pub,
+            "form": res.form,
+            "paid": res.paid,
+            "term": res.term,
+            "delivery": res.delivery,
+            "payment_method": res.payment_method,
+            "string_order_id": res.string_order_id
+        })
+    except Exception as e:
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route("/api/reservations/last", methods=["GET"])
@@ -388,6 +468,7 @@ def get_last_reservation():
         }), 200
     
     except Exception as e:
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": f"Wystąpił błąd serwera. {e}"}), 500
     
 
@@ -412,7 +493,8 @@ def do_customer_have_reservations(customer_id):
                 "message": "Klient nie ma rezerwacji."
             }), 200
     except Exception as e:
-        return jsonify({"error": f"Wystąpił błąd serwera. {e}"}), 500
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": f"Wystąpił błąd serwera. {e}"}), 400
 
 
 @app.route("/api/products/<int:product_id>/is_reserved", methods=["GET"])
@@ -437,8 +519,75 @@ def is_product_reserved(product_id):
             }), 200
             
     except Exception as e:
-        return jsonify({"error": f"Wystąpił błąd serwera. {e}"}), 500
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": f"Wystąpił błąd serwera. {e}"}), 400
 
+
+
+@app.route("/api/products/first_free", methods=["GET"])
+@require_apikey
+def get_first_free_element():
+    """
+    Returns first not reserved and not sold product
+    matching given args (brand, model, colour, year, delivery)
+    from products table.
+    If delivery is not given then search for a product with no delivery info.
+    """
+    try:
+        brand_given = request.args.get("brand")
+        model_given = request.args.get("model")
+        colour_given = request.args.get("colour")
+        year_given = request.args.get("year")
+        delivery_given = request.args.get("delivery")
+        
+        if delivery_given: 
+            delivery_given = datetime.strptime(delivery_given, "%d.%m.%Y")
+        else: 
+            delivery_given = None
+
+        result = db_session.query(Product).outerjoin(Reservation).filter(
+            Reservation.id == None, 
+            Product.state == "Oczekujemy na dostawę",
+            Product.brand == brand_given, 
+            Product.model == model_given,
+            Product.colour == colour_given, 
+            Product.year == year_given, 
+            Product.expected_delivery == delivery_given
+        ).first()
+        
+        if result is None:
+            result = db_session.query(Product).outerjoin(Reservation).filter(
+                Reservation.id == None, 
+                Product.state != "Wydany",
+                Product.brand == brand_given, 
+                Product.model == model_given,
+                Product.colour == colour_given, 
+                Product.year == year_given, 
+                Product.expected_delivery == delivery_given
+            ).first()
+
+        if result:
+            return jsonify({"id": result.id, "price": result.price})
+        return jsonify({"error": "Brak wolnych pojazdów o tych parametrach"}), 404
+
+    except Exception as e:
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/reservations/next_id", methods=["GET"])
+@require_apikey
+def get_new_order_id():
+    """
+    Returns a potential id for new order.
+    """
+    try:
+        last_res = db_session.query(Reservation).order_by(desc(Reservation.id)).first()
+        new_id = last_res.id + 1 if last_res else 1
+        return jsonify({"next_id": new_id})
+        
+    except Exception as e:
+        app.logger.error(f"[ERROR] {e}")
+        return jsonify({"error": str(e)}), 500
 
 """ ---------------------------- POST/DELETE ENDPOINTS -------------------------------- """
 
@@ -484,6 +633,7 @@ def add_new_product():
 
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": str(e)}), 400
 
 
@@ -511,6 +661,7 @@ def add_new_customer():
         return jsonify({"id": new_customer.id, "message": "Klient dodany"}), 201
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": f"Błąd dodawania klienta: {e}"}), 400
 
 
@@ -554,6 +705,7 @@ def make_new_reservation():
         return jsonify({"message": "Rezerwacja zakończona sukcesem"}), 201
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": f"Błąd tworzenia rezerwacji {e}"}), 400
 
 
@@ -571,6 +723,7 @@ def add_colour():
         return jsonify({"message": "Dodano kolor"}), 201
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": f"Błąd dodawania koloru: {e}"}), 400
 
 
@@ -591,6 +744,7 @@ def drop_colour(name):
         return jsonify({"error": "Kolor nie istnieje."}), 404
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": f"Błąd usuwania koloru: {e}"}), 400
 
 
@@ -608,6 +762,7 @@ def add_brand():
         return jsonify({"message": "Dodano markę"}), 201
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": f"Błąd dodawania marki: {e}"}), 400
 
 @app.route("/api/brands/<name>", methods=["DELETE"])
@@ -627,6 +782,7 @@ def drop_brand(name):
         return jsonify({"error": "Marka nie istnieje."}), 404
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": f"Błąd usuwania marki: {e}"}), 400
 
 
@@ -650,6 +806,7 @@ def add_model():
         return jsonify({"message": "Dodano model"}), 201
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": "Błąd dodawania modelu: {e}"}), 400
 
 @app.route("/api/models/", methods=["DELETE"])
@@ -675,6 +832,7 @@ def drop_model():
         return jsonify({"message": "Nie ma takiego modelu"}), 404
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": f"Błąd usuwania koloru: {e}"}), 400
 
 
@@ -709,6 +867,7 @@ def edit_product(product_id):
         return jsonify({"message": "Zaktualizowano produkt"})
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": str(e)}), 400
 
 
@@ -726,6 +885,7 @@ def drop_product(product_id):
         return jsonify({"message": "Usunięto produkt"})
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": f"Błąd edytowania produktu: {e}"}), 400
 
 
@@ -759,6 +919,7 @@ def edit_reservation(reservation_id):
         return jsonify({"message": "Zaktualizowano rezerwację"})
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": f"Błąd edycji rezerwacji: {e}"}), 400
 
 
@@ -782,6 +943,7 @@ def drop_reservation(reservation_id):
         return jsonify({"message": "Usunięto rezerwację i przywrócono cenę"})
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": str(e)}), 400
 
 
@@ -810,6 +972,7 @@ def edit_customer(customer_id):
         return jsonify({"message": "Zaktualizowano dane klienta"})
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": str(e)}), 400
 
 
@@ -834,66 +997,8 @@ def drop_customer(customer_id):
         return jsonify({"message": "Usunięto klienta"})
     except Exception as e:
         db_session.rollback()
+        app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": str(e)}), 400
-
-
-@app.route("/api/products/first_free", methods=["GET"])
-@require_apikey
-def get_first_free_element():
-    """
-    Returns first not reserved and not sold product
-    matching given args (brand, model, colour, year, delivery)
-    from products table.
-    If delivery is not given then search for a product with no delivery info.
-    """
-    brand_given = request.args.get("brand")
-    model_given = request.args.get("model")
-    colour_given = request.args.get("colour")
-    year_given = request.args.get("year")
-    delivery_given = request.args.get("delivery")
-    
-    if delivery_given: 
-        delivery_given = datetime.strptime(delivery_given, "%d.%m.%Y")
-    else: 
-        delivery_given = None
-
-    result = db_session.query(Product).outerjoin(Reservation).filter(
-        Reservation.id == None, 
-        Product.state == "Oczekujemy na dostawę",
-        Product.brand == brand_given, 
-        Product.model == model_given,
-        Product.colour == colour_given, 
-        Product.year == year_given, 
-        Product.expected_delivery == delivery_given
-    ).first()
-    
-    if result is None:
-        result = db_session.query(Product).outerjoin(Reservation).filter(
-            Reservation.id == None, 
-            Product.state != "Wydany",
-            Product.brand == brand_given, 
-            Product.model == model_given,
-            Product.colour == colour_given, 
-            Product.year == year_given, 
-            Product.expected_delivery == delivery_given
-        ).first()
-
-    if result:
-        return jsonify({"id": result.id, "price": result.price})
-    return jsonify({"error": "Brak wolnych pojazdów o tych parametrach"}), 404
-
-@app.route("/api/reservations/next_id", methods=["GET"])
-@require_apikey
-def get_new_order_id():
-    """
-    Returns a potential id for new order.
-    """
-    try:
-        last_res = db_session.query(Reservation).order_by(desc(Reservation.id)).first()
-        new_id = last_res.id + 1 if last_res else 1
-        return jsonify({"next_id": new_id})
-    except:
-        return jsonify({"next_id": 1})
 
 
 
