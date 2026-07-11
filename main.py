@@ -368,6 +368,8 @@ def get_reservation(reservation_id):
         "payment_method": res.payment_method,
         "string_order_id": res.string_order_id
     })
+
+
 """ ---------------------------- POST/DELETE ENDPOINTS -------------------------------- """
 
 @app.route("/api/customers", methods=["POST"])
@@ -574,9 +576,9 @@ def edit_product(product_id):
         if not product:
             return jsonify({"error": "Ten produkt nie istnieje."}), 404
 
-        product.brand = data.get("brand", product.brand)
-        product.model = data.get("model", product.model)
-        product.colour = data.get("colour", product.colour)
+        product.brand = str(data.get("brand", product.brand)).upper()
+        product.model = str(data.get("model", product.model)).upper()
+        product.colour = str(data.get("colour", product.colour)).upper()
         product.price = data.get("price", product.price)
         product.old_price = data.get("old_price", product.old_price)
         product.year = data.get("year", product.year)
