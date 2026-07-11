@@ -5,21 +5,24 @@ from flask import request, jsonify
 
 def require_apikey(view_function):
     """
-    Decorator validating api key passed as "X-API-Key"
+    Decorator validating api key against the database
     """
-    VALID_API_KEYS = os.getenv("VALID_API_KEYS")
     @wraps(view_function)
     def decorated_function(*args, **kwargs):
         request_key = request.headers.get('X-API-Key')
 
-        if request_key and request_key in VALID_API_KEYS:
-            request.current_user = VALID_API_KEYS[request_key]
+        if not request_key:
+            return jsonify({"error": "Missing API key in headers."}), 401
+
+        api_user = db_session.query(ApiKey).filter(ApiKey.key == request_key).first()
+
+        if api_user:
+            request.current_user = api_user.username
             return view_function(*args, **kwargs)
         else:
-            return jsonify({"error": "Nieautoryzowany dostęp. Błędny lub brakujący klucz API."}), 401
+            return jsonify({"error": "Unauthorised access. Wrong API key."}), 401
 
     return decorated_function
-
 
 def update_sync_state(session):
     try:

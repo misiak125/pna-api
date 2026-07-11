@@ -4,8 +4,26 @@ from flask import Flask, request, jsonify
 from sqlalchemy import create_engine, or_, func, desc
 from sqlalchemy.orm import sessionmaker, scoped_session
 from datetime import datetime
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 from utils import *
+
+""" ---------------------- limits configuration ------------------------- """
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["500 per day", "60 per minute"], 
+    storage_uri="memory://"
+)
+
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return jsonify({
+        "error": "Rate Limit exceeded.", 
+        "details": str(e.description)
+    }), 429
+
 
 """ ---------------------- DB configuration ------------------------- """
 load_dotenv()
@@ -35,6 +53,7 @@ def shutdown_session(exception=None):
 """ ------------------------------------------ GET ENDPOINS ----------------------------------------------- """
 
 @app.route("/api/sync-status", methods=["GET"])
+@require_apikey
 def get_sync_status():
     """
     Returns datetime of last change in database.
@@ -46,6 +65,7 @@ def get_sync_status():
 
 
 @app.route("/api/products/free", methods=["GET"])
+@require_apikey
 def get_free_products():
     """ 
     Returns count of not reserved and not sold products from products table 
@@ -109,6 +129,7 @@ def get_free_products():
 
 
 @app.route("/api/products/all", methods=["GET"])
+@require_apikey
 def get_all_products():
     """
     Returns products from products table.
@@ -168,6 +189,7 @@ def get_all_products():
 
 
 @app.route("/api/customers", methods=["GET"])
+@require_apikey
 def get_customers():
     """
     Returns customers from customers table.
@@ -192,6 +214,7 @@ def get_customers():
 
 
 @app.route("/api/reservations", methods=["GET"])
+@require_apikey
 def get_reservations():
     """
     Returns reservations from reservations table.
@@ -238,6 +261,7 @@ def get_reservations():
 
 
 @app.route("/api/colours", methods=["GET"])
+@require_apikey
 def get_colours():
     """
     Returns all colours from colours table.
@@ -247,6 +271,7 @@ def get_colours():
 
 
 @app.route("/api/brands", methods=["GET"])
+@require_apikey
 def get_brands():
     """
     Returns all brands from brands table.
@@ -256,6 +281,7 @@ def get_brands():
 
 
 @app.route("/api/models", methods=["GET"])
+@require_apikey
 def get_models():
     """
     Returns all models form models table
@@ -274,6 +300,7 @@ def get_models():
 
 
 @app.route("/api/customers/<int:customer_id>", methods=["GET"])
+@require_apikey
 def get_customer(customer_id):
     """
     Returns a customer of customer_id from customers table.
@@ -295,6 +322,7 @@ def get_customer(customer_id):
 
 
 @app.route("/api/products/<int:product_id>", methods=["GET"])
+@require_apikey
 def get_product(product_id):
     """
     Returns a product of product_id from products table.
@@ -312,6 +340,7 @@ def get_product(product_id):
 
 
 @app.route("/api/reservations/<int:reservation_id>", methods=["GET"])
+@require_apikey
 def get_reservation(reservation_id):
     """
     Returns a reservation of reservation_id joined with 
@@ -342,6 +371,7 @@ def get_reservation(reservation_id):
 """ ---------------------------- POST/DELETE ENDPOINTS -------------------------------- """
 
 @app.route("/api/customers", methods=["POST"])
+@require_apikey
 def add_new_customer():
     """ 
     Adds new customer of arguments 
@@ -368,6 +398,7 @@ def add_new_customer():
 
 
 @app.route("/api/reservations", methods=["POST"])
+@require_apikey
 def make_new_reservation():
     """
     Adds new reservation of given args to reservations table.
@@ -410,6 +441,7 @@ def make_new_reservation():
 
 
 @app.route("/api/colours", methods=["POST"])
+@require_apikey
 def add_colour():
     """ 
     Adds new colour (name arg) to colours table.
@@ -426,6 +458,8 @@ def add_colour():
 
 
 @app.route("/api/colours/<name>", methods=["DELETE"])
+@require_apikey
+@limiter.limit("2 per minute")
 def drop_colour(name):
     """ 
     Drops colour (name arg) from colours table.
@@ -444,6 +478,7 @@ def drop_colour(name):
 
 
 @app.route("/api/brands", methods=["POST"])
+@require_apikey
 def add_brand():
     """
     Adds a brand name (name arg) to brands table.
@@ -459,6 +494,8 @@ def add_brand():
         return jsonify({"error": f"Błąd dodawania marki: {e}"}), 400
 
 @app.route("/api/brands/<name>", methods=["DELETE"])
+@require_apikey
+@limiter.limit("2 per minute")
 def drop_brand(name):
     """ 
     Drops brand (name arg) from brands table.
@@ -477,6 +514,7 @@ def drop_brand(name):
 
 
 @app.route("/api/models", methods=["POST"])
+@require_apikey
 def add_model():
     """
     Adds new model (model arg) with brand 
@@ -498,6 +536,8 @@ def add_model():
         return jsonify({"error": "Błąd dodawania modelu: {e}"}), 400
 
 @app.route("/api/models/", methods=["DELETE"])
+@require_apikey
+@limiter.limit("2 per minute")
 def drop_model():
     """ 
     Drops model (model arg) with brand (brand arg) from models table.
@@ -522,6 +562,8 @@ def drop_model():
 
 
 @app.route("/api/products/<int:product_id>", methods=["PUT"])
+@require_apikey
+@limiter.limit("2 per minute")
 def edit_product(product_id):
     """ 
     Edits product of product_id arg with args given.
@@ -553,6 +595,8 @@ def edit_product(product_id):
         return jsonify({"error": str(e)}), 400
 
 @app.route("/api/products/<int:product_id>", methods=["DELETE"])
+@require_apikey
+@limiter.limit("2 per minute")
 def drop_product(product_id):
     """
     Drops product of product_id arg.
@@ -568,6 +612,8 @@ def drop_product(product_id):
 
 
 @app.route("/api/reservations/<int:reservation_id>", methods=["PUT"])
+@require_apikey
+@limiter.limit("2 per minute")
 def edit_reservation(reservation_id):
     """ 
     Edits reservation of reservation_id arg with args given.
@@ -598,6 +644,8 @@ def edit_reservation(reservation_id):
         return jsonify({"error": f"Błąd edycji rezerwacji: {e}"}), 400
 
 @app.route("/api/reservations/<int:reservation_id>", methods=["DELETE"])
+@require_apikey
+@limiter.limit("2 per minute")
 def drop_reservation(reservation_id):
     """
     Drops reservaion of reservation_id.
@@ -619,6 +667,7 @@ def drop_reservation(reservation_id):
 
 
 @app.route("/api/products/first_free", methods=["GET"])
+@require_apikey
 def get_first_free_element():
     """
     Returns first not reserved and not sold product
@@ -663,6 +712,7 @@ def get_first_free_element():
     return jsonify({"error": "Brak wolnych pojazdów o tych parametrach"}), 404
 
 @app.route("/api/reservations/next_id", methods=["GET"])
+@require_apikey
 def get_new_order_id():
     """
     Returns a potential id for new order.
@@ -673,6 +723,8 @@ def get_new_order_id():
         return jsonify({"next_id": new_id})
     except:
         return jsonify({"next_id": 1})
+
+
 
 if __name__ == "__main__":
     app.run(debug=True)
