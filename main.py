@@ -370,7 +370,122 @@ def get_reservation(reservation_id):
     })
 
 
+@app.route("/api/reservations/last", methods=["GET"])
+@require_apikey
+def get_last_reservation():
+    """
+    Returns last reservation made.
+    """
+    try:
+        res = db_session.query(Reservation).order_by(desc(Reservation.id)).first()
+        if not res:
+            return jsonify({"error": "Brak rezerwacji w bazie"}), 404
+            
+        return jsonify({
+            "id": res.id,
+            "string_order_id": res.string_order_id,
+            "date": res.date.strftime("%d-%m-%Y %H:%M")
+        }), 200
+    
+    except Exception as e:
+        return jsonify({"error": f"Wystąpił błąd serwera. {e}"}), 500
+    
+
+
+@app.route("/api/customers/<int:customer_id>/has_reservations", methods=["GET"])
+@require_apikey
+def do_customer_have_reservations(customer_id):
+    """
+    Returns information whether the customer of customer_id has any reservations made.
+    """
+    try:
+        reservation = db_session.query(Reservation).filter(Reservation.customer_id == customer_id).first()
+        if reservation:
+            return jsonify({
+                "is_reserved": True, 
+                "reservation_id": reservation.id,
+                "message": "Klient posiada rezerwacje."
+            }), 200
+        else:
+            return jsonify({
+                "is_reserved": False,
+                "message": "Klient nie ma rezerwacji."
+            }), 200
+    except Exception as e:
+        return jsonify({"error": f"Wystąpił błąd serwera. {e}"}), 500
+
+
+@app.route("/api/products/<int:product_id>/is_reserved", methods=["GET"])
+@require_apikey
+def is_product_reserved(product_id):
+    """
+    Returns information whether the product of product_id is reserved.
+    """
+    try:
+        reservation = db_session.query(Reservation).filter(Reservation.product_id == product_id).first()
+        
+        if reservation:
+            return jsonify({
+                "is_reserved": True, 
+                "reservation_id": reservation.id,
+                "message": "Produkt jest zarezerwowany."
+            }), 200
+        else:
+            return jsonify({
+                "is_reserved": False,
+                "message": "Produkt jest wolny."
+            }), 200
+            
+    except Exception as e:
+        return jsonify({"error": f"Wystąpił błąd serwera. {e}"}), 500
+
+
 """ ---------------------------- POST/DELETE ENDPOINTS -------------------------------- """
+
+
+@app.route("/api/products", methods=["POST"])
+@require_apikey
+def add_new_product():
+    """ 
+    Adds new product of arguments 
+    given to products table.
+    """
+
+    data = request.get_json()
+    
+    try:
+        exp_deliv_str = data.get("expected_delivery")
+        exp_deliv_date = None
+        if exp_deliv_str:
+            exp_deliv_date = datetime.strptime(exp_deliv_str, "%Y-%m-%dT%H:%M:%S")
+
+        price = data.get("price")
+
+        new_product = Product(
+            brand=str(data.get("brand")).upper(),
+            model=str(data.get("model")).upper(),
+            colour=str(data.get("colour")).upper(),
+            year=data.get("year"),
+            added_on=datetime.now(),
+            price=price,
+            old_price=price,
+            order_id=data.get("order_id"),
+            state="Oczekujemy na dostawę",
+            expected_delivery=exp_deliv_date
+        )
+
+        db_session.add(new_product)
+        db_commit_update(db_session)
+
+        return jsonify({
+            "id": new_product.id, 
+            "message": f"Produkt {new_product.brand} {new_product.model} dodany pomyślnie"
+        }), 201
+
+    except Exception as e:
+        db_session.rollback()
+        return jsonify({"error": str(e)}), 400
+
 
 @app.route("/api/customers", methods=["POST"])
 @require_apikey
@@ -596,6 +711,7 @@ def edit_product(product_id):
         db_session.rollback()
         return jsonify({"error": str(e)}), 400
 
+
 @app.route("/api/products/<int:product_id>", methods=["DELETE"])
 @require_apikey
 @limiter.limit("2 per minute")
@@ -645,6 +761,7 @@ def edit_reservation(reservation_id):
         db_session.rollback()
         return jsonify({"error": f"Błąd edycji rezerwacji: {e}"}), 400
 
+
 @app.route("/api/reservations/<int:reservation_id>", methods=["DELETE"])
 @require_apikey
 @limiter.limit("2 per minute")
@@ -663,6 +780,58 @@ def drop_reservation(reservation_id):
             
         db_commit_update(db_session)
         return jsonify({"message": "Usunięto rezerwację i przywrócono cenę"})
+    except Exception as e:
+        db_session.rollback()
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/customers/<int:customer_id>", methods=["PUT"])
+@require_apikey
+@limiter.limit("2 per minute")
+def edit_customer(customer_id):
+    """ 
+    Edits customer of customer_id arg with args given.
+    """
+    data = request.get_json()
+    try:
+        customer = db_session.query(Customer).filter(Customer.id == customer_id).first()
+        if not customer:
+            return jsonify({"error": "Brak klienta"}), 404
+
+        customer.name = data.get("name", customer.name)
+        customer.phone = data.get("phone", customer.phone)
+        customer.email = data.get("email", customer.email)
+        customer.pesel = data.get("pesel", customer.pesel)
+        customer.nip = data.get("nip", customer.nip)
+        customer.company_name = data.get("company_name", customer.company_name)
+        customer.adress = data.get("adress", customer.adress)
+
+        db_commit_update(db_session)
+        return jsonify({"message": "Zaktualizowano dane klienta"})
+    except Exception as e:
+        db_session.rollback()
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/customers/<int:customer_id>", methods=["DELETE"])
+@require_apikey
+@limiter.limit("2 per minute")
+def drop_customer(customer_id):
+    try:
+        """
+        Drops customer of customer_id
+
+        note: it's worth using do_customer_have_reservations endpoint before using this one to 
+        avoid foreign key error
+        """
+        customer = db_session.query(Customer).filter(Customer.id == customer_id).first()
+        if not customer:
+             return jsonify({"error": "Brak klienta"}), 404
+             
+        db_session.delete(customer)
+
+        db_commit_update(db_session)
+        return jsonify({"message": "Usunięto klienta"})
     except Exception as e:
         db_session.rollback()
         return jsonify({"error": str(e)}), 400
