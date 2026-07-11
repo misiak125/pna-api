@@ -16,6 +16,8 @@ class Product(Base):
     state = Column(String)
     order_id = Column(String)
     expected_delivery = Column(DateTime)
+    history = Column(String, nullable=False)
+    deleted = Column(Boolean, nullable=False, default=False)
 
 class Customer(Base):
     __tablename__ = "customers"
@@ -29,6 +31,8 @@ class Customer(Base):
     nip = Column(String)
     adress = Column(String)
     company_name = Column(String)
+    history = Column(String, nullable=False)
+    deleted = Column(Boolean, nullable=False, default=False)
 
 class Reservation(Base):
     __tablename__ = "reservations"
@@ -46,6 +50,8 @@ class Reservation(Base):
     term = Column(String)
     payment_method = Column(String)
     string_order_id = Column(String)
+    history = Column(String, nullable=False)
+    deleted = Column(Boolean, nullable=False, default=False)
     
 class Brand(Base):
     __tablename__ = "brands"
