@@ -60,6 +60,7 @@ def get_free_products():
 
     if not split_dates:
         query = db_session.query(
+            func.first(Product.id).label("first_id"),
             Product.brand, Product.model, Product.year, Product.colour,
             func.max(Product.price).label("max_price"),
             func.count(Product.id).label("count"),
@@ -70,6 +71,7 @@ def get_free_products():
         ).group_by(Product.brand, Product.model, Product.colour, Product.year)
     else:
         query = db_session.query(
+            func.first(Product.id).label("first_id"),
             Product.brand, Product.model, Product.year, Product.colour,
             func.max(Product.price).label("max_price"),
             func.count(Product.id).label("count"),
@@ -97,6 +99,7 @@ def get_free_products():
     output = []
     for r in results:
         output.append({
+            "first_free_id": r.first_id,
             "brand": r.brand, "model": r.model, "year": r.year, 
             "colour": r.colour, "count": r.count, 
             "delivery": r.delivery.strftime('%d.%m.%Y') if r.delivery else "",
@@ -105,7 +108,7 @@ def get_free_products():
     return jsonify(output)
 
 
-@app.route("/api/products", methods=["GET"])
+@app.route("/api/products/all", methods=["GET"])
 def get_all_products():
     """
     Returns products from products table.
