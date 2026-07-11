@@ -36,13 +36,13 @@ def update_sync_state(session):
         raise
 
 
-def commit_update(session):
+def db_commit_update(session):
     """
     Commits to db and updates last changes state.
     """
     try:
         update_sync_state(db_session)
-        commit_update(db_session)
+        db_session.commit()
     except:
         raise
 
