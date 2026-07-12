@@ -1,19 +1,12 @@
 import os
 import sys
-from dotenv import load_dotenv
-from flask import Flask, request, jsonify
-from sqlalchemy import create_engine, or_, func, desc
-from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
+from flask import request, jsonify
+from sqlalchemy import func, desc
 from datetime import datetime
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-import logging
-from logging.handlers import RotatingFileHandler
-from flask_status import FlaskStatus
 
-from . import app, limiter
+from src import app, logging
 
-from utils import *
+from src.utils import *
 
 
 sys.path.insert(0, os.path.dirname(__file__))

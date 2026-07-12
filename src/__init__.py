@@ -1,10 +1,8 @@
 import os
-import sys
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify
-from sqlalchemy import create_engine, or_, func, desc
+from flask import Flask, jsonify
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
-from datetime import datetime
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import logging
