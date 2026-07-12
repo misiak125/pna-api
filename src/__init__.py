@@ -7,11 +7,11 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import logging
 from logging.handlers import RotatingFileHandler
-from flask_status import FlaskStatus
+#from flask_status import FlaskStatus
 
 
 app = Flask(__name__)
-FlaskStatus(app)
+#FlaskStatus(app)
 
 
 """ ---------------------- logging configuration ------------------------- """
