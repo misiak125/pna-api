@@ -100,6 +100,11 @@ def shutdown_session(exception=None):
     """Automatic session closer"""
     db_session.remove()
 
+# tmp debug endpoint
+@app.route("/")
+def root():
+    return {"message": "Hello World z Flask!"}
+
 
 """ ------------------------------------------ GET ENDPOINS ----------------------------------------------- """
 
