@@ -21,13 +21,6 @@ def application(environ, start_response):
 
 
 
-
-# tmp debug endpoint
-@app.route("/")
-def root():
-    return {"message": "Hello World z Flask!"}
-
-
 """ ------------------------------------------ GET ENDPOINS ----------------------------------------------- """
 
 @app.route("/api/sync-status", methods=["GET"])
