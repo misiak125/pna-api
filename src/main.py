@@ -4,7 +4,7 @@ from flask import request, jsonify
 from sqlalchemy import func, desc
 from datetime import datetime
 
-from src import app, logging
+from src import app, limiter
 
 from src.utils import *
 
