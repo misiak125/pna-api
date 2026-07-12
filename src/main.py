@@ -368,19 +368,43 @@ def get_reservation(reservation_id):
             return jsonify({"error": "Brak rezerwacji"}), 404
             
         res, prod, cust = res_tuple
+        
         return jsonify({
-            "reservation_id": res.id,
-            "customer_id": cust.id,
-            "product_id": prod.id,
-            "advance": res.advance,
-            "adnotation": res.adnotation,
-            "adnotation_pub": res.adnotation_pub,
-            "form": res.form,
-            "paid": res.paid,
-            "term": res.term,
-            "delivery": res.delivery,
-            "payment_method": res.payment_method,
-            "string_order_id": res.string_order_id
+            "reservation": {
+                "id": res.id,
+                "advance": res.advance,
+                "adnotation": res.adnotation,
+                "adnotation_pub": res.adnotation_pub,
+                "form": res.form,
+                "paid": res.paid,
+                "term": res.term,
+                "delivery": res.delivery,
+                "payment_method": res.payment_method,
+                "string_order_id": res.string_order_id,
+                "date": res.date.strftime("%Y-%m-%dT%H:%M:%S") if res.date else None
+            },
+            "product": {
+                "id": prod.id,
+                "brand": prod.brand,
+                "model": prod.model,
+                "colour": prod.colour,
+                "year": prod.year,
+                "price": prod.price,
+                "old_price": prod.old_price,
+                "state": prod.state,
+                "order_id": prod.order_id,
+                "expected_delivery": prod.expected_delivery.strftime('%Y-%m-%d') if prod.expected_delivery else None
+            },
+            "customer": {
+                "id": cust.id,
+                "name": cust.name,
+                "phone": cust.phone,
+                "email": cust.email,
+                "pesel": cust.pesel,
+                "nip": cust.nip,
+                "company_name": cust.company_name,
+                "adress": cust.adress
+            }
         })
     except Exception as e:
         app.logger.error(f"[ERROR] {e}")
