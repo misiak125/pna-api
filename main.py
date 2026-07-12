@@ -2,15 +2,20 @@ import os
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from sqlalchemy import create_engine, or_, func, desc
-from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
 from datetime import datetime
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import logging
 from logging.handlers import RotatingFileHandler
+from flask_status import FlaskStatus
 
 from utils import *
 
+
+
+app = Flask(__name__)
+FlaskStatus(app)
 
 """ ---------------------- logging configuration ------------------------- """
 if not os.path.exists('logs'):
@@ -68,6 +73,7 @@ if not SQLALCHEMY_DATABASE_URL:
     raise ValueError("DATABASE_URL not in .env")
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
+Base = declarative_base()
 Base.metadata.create_all(bind=engine)
 
 
@@ -76,7 +82,6 @@ from models import Base, Product, Customer, Reservation, Brand, Model, Colour
 SessionMaker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 db_session = scoped_session(SessionMaker)
 
-app = Flask(__name__)
 
 
 @app.teardown_appcontext

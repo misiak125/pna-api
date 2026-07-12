@@ -2,3 +2,5 @@ Flask==3.0.0
 SQLAlchemy==2.0.23
 pymysql==1.1.0
 python-dotenv==1.0.0
+flask_limiter==4.1.1
+flask_status==1.0.1
