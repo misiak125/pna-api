@@ -74,7 +74,7 @@ if not SQLALCHEMY_DATABASE_URL:
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 Base = declarative_base()
 
-from src.models import Product, Customer, Reservation, Brand, Model, Colour
+from src.models import Product, Customer, Reservation, Brand, Model, Colour, AppState, ApiKey
 
 Base.metadata.create_all(bind=engine)
 

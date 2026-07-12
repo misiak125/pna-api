@@ -79,3 +79,9 @@ class ApiKey(Base):
     id = Column(Integer, primary_key=True)
     key = Column(String(128), unique=True, nullable=False)
     username = Column(String(128), nullable=False)
+
+class AppState(Base):
+    __tablename__ = "app_state"
+
+    id = Column(Integer, primary_key=True)
+    last_update = Column(DateTime, default=datetime.now)
