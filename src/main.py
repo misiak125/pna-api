@@ -57,7 +57,7 @@ def get_free_products():
 
         if not split_dates:
             query = db_session.query(
-                func.first(Product.id).label("first_id"),
+                func.min(Product.id).label("first_id"),
                 Product.brand, Product.model, Product.year, Product.colour,
                 func.max(Product.price).label("max_price"),
                 func.count(Product.id).label("count"),
@@ -68,7 +68,7 @@ def get_free_products():
             ).group_by(Product.brand, Product.model, Product.colour, Product.year)
         else:
             query = db_session.query(
-                func.first(Product.id).label("first_id"),
+                func.min(Product.id).label("first_id"),
                 Product.brand, Product.model, Product.year, Product.colour,
                 func.max(Product.price).label("max_price"),
                 func.count(Product.id).label("count"),
