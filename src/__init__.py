@@ -71,10 +71,11 @@ SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 if not SQLALCHEMY_DATABASE_URL:
     raise ValueError("DATABASE_URL not in .env")
 
-from src.models import Product, Customer, Reservation, Brand, Model, Colour
-
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 Base = declarative_base()
+
+from src.models import Product, Customer, Reservation, Brand, Model, Colour
+
 Base.metadata.create_all(bind=engine)
 
 
