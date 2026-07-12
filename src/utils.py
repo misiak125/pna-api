@@ -2,7 +2,7 @@ import os
 from functools import wraps
 from flask import request, jsonify
 from src import db_session
-from src.models import ApiKey
+from src.models import ApiKey, AppState
 
 def require_apikey(view_function):
     """
