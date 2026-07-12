@@ -1,6 +1,7 @@
 import os
 from functools import wraps
 from flask import request, jsonify
+from src import db_session
 
 
 def require_apikey(view_function):
