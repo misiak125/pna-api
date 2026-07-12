@@ -88,7 +88,7 @@ Base = declarative_base()
 Base.metadata.create_all(bind=engine)
 
 
-from models import Base, Product, Customer, Reservation, Brand, Model, Colour
+from models import Product, Customer, Reservation, Brand, Model, Colour
 
 SessionMaker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 db_session = scoped_session(SessionMaker)
