@@ -11,6 +11,8 @@ import logging
 from logging.handlers import RotatingFileHandler
 from flask_status import FlaskStatus
 
+from . import app, limiter
+
 from utils import *
 
 
