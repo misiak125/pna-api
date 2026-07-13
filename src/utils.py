@@ -5,6 +5,7 @@ from src import db_session
 from src.models import ApiKey, AppState
 from datetime import datetime
 from sqlalchemy import func
+import hashlib
 
 def require_apikey(view_function):
     """
@@ -13,11 +14,12 @@ def require_apikey(view_function):
     @wraps(view_function)
     def decorated_function(*args, **kwargs):
         request_key = request.headers.get('X-API-Key')
-
         if not request_key:
             return jsonify({"error": "Missing API key in headers."}), 401
 
-        api_user = db_session.query(ApiKey).filter(ApiKey.key == request_key).first()
+        hashed_request = hashlib.sha256(request_key.encode()).hexdigest()
+
+        api_user = db_session.query(ApiKey).filter(ApiKey.key == hashed_request).first()
 
         if api_user:
             request.current_user = api_user.username
@@ -26,6 +28,7 @@ def require_apikey(view_function):
             return jsonify({"error": "Unauthorised access. Wrong API key."}), 401
 
     return decorated_function
+
 
 def update_sync_state(session):
     try:
