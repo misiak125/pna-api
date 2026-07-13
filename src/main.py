@@ -689,7 +689,7 @@ def add_colour():
         return jsonify({"error": f"Błąd dodawania koloru: {e}"}), 400
 
 
-@app.route("/api/colours/<name>", methods=["DELETE"])
+@app.route("/api/colours/", methods=["DELETE"])
 @require_apikey
 @limiter.limit("2 per minute")
 def drop_colour(name):
@@ -730,7 +730,7 @@ def add_brand():
         app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": f"Błąd dodawania marki: {e}"}), 400
 
-@app.route("/api/brands/<name>", methods=["DELETE"])
+@app.route("/api/brands/", methods=["DELETE"])
 @require_apikey
 @limiter.limit("2 per minute")
 def drop_brand(name):
