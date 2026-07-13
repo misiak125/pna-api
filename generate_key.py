@@ -23,4 +23,4 @@ if __name__ == "__main__":
         print("Prawidłowe użycie: python generate_key.py <nazwa_pracownika>\n")
     else:
         username = sys.argv[1]
-        generate_and_save_key(username)
+        generate_key(username)
