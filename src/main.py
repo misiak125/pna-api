@@ -1,88 +1,25 @@
 import os
-from dotenv import load_dotenv
-from flask import Flask, request, jsonify
-from sqlalchemy import create_engine, or_, func, desc
-from sqlalchemy.orm import sessionmaker, scoped_session
+import sys
+from flask import request, jsonify
+from sqlalchemy import func, desc
 from datetime import datetime
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-import logging
-from logging.handlers import RotatingFileHandler
 
-from utils import *
+from src.models import Product, Customer, Reservation, Brand, Model, Colour
+from src import app, limiter
 
-
-""" ---------------------- logging configuration ------------------------- """
-if not os.path.exists('logs'):
-    os.mkdir('logs')
-
-# saving logs to app.log (max 1MB oer file, max 10 old files)
-file_handler = RotatingFileHandler('logs/app.log', maxBytes=1024000, backupCount=10)
-file_handler.setFormatter(logging.Formatter(
-    '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
-))
-file_handler.setLevel(logging.INFO)
-
-app.logger.addHandler(file_handler)
-app.logger.setLevel(logging.INFO)
-app.logger.info('Starting server API PNA')
-
-@app.errorhandler(Exception)
-def handle_unhandled_exception(e):
-    """
-    Global unhandled errors logger.
-    """
-    if isinstance(e, HTTPException):
-        return e
-
-    
-    app.logger.exception("[CRITICAL] Unhandled Exception:")
-    
-    
-    return jsonify({
-        "error": "Wystąpił nieoczekiwany błąd serwera."
-    }), 500
+from src.utils import *
 
 
-""" ---------------------- limits configuration ------------------------- """
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=["500 per day", "60 per minute"], 
-    storage_uri="memory://"
-)
-
-@app.errorhandler(429)
-def ratelimit_handler(e):
-    return jsonify({
-        "error": "Rate Limit exceeded.", 
-        "details": str(e.description)
-    }), 429
+sys.path.insert(0, os.path.dirname(__file__))
 
 
-""" ---------------------- DB configuration ------------------------- """
-load_dotenv()
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+def application(environ, start_response):
+    start_response('200 OK', [('Content-Type', 'text/plain')])
+    message = 'It works!\n'
+    version = 'Python v' + sys.version.split()[0] + '\n'
+    response = '\n'.join([message, version])
+    return [response.encode()]
 
-if not SQLALCHEMY_DATABASE_URL:
-    raise ValueError("DATABASE_URL not in .env")
-
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-Base.metadata.create_all(bind=engine)
-
-
-from models import Base, Product, Customer, Reservation, Brand, Model, Colour
-
-SessionMaker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-db_session = scoped_session(SessionMaker)
-
-app = Flask(__name__)
-
-
-@app.teardown_appcontext
-def shutdown_session(exception=None):
-    """Automatic session closer"""
-    db_session.remove()
 
 
 """ ------------------------------------------ GET ENDPOINS ----------------------------------------------- """
@@ -120,7 +57,7 @@ def get_free_products():
 
         if not split_dates:
             query = db_session.query(
-                func.first(Product.id).label("first_id"),
+                func.min(Product.id).label("first_id"),
                 Product.brand, Product.model, Product.year, Product.colour,
                 func.max(Product.price).label("max_price"),
                 func.count(Product.id).label("count"),
@@ -131,7 +68,7 @@ def get_free_products():
             ).group_by(Product.brand, Product.model, Product.colour, Product.year)
         else:
             query = db_session.query(
-                func.first(Product.id).label("first_id"),
+                func.min(Product.id).label("first_id"),
                 Product.brand, Product.model, Product.year, Product.colour,
                 func.max(Product.price).label("max_price"),
                 func.count(Product.id).label("count"),
@@ -355,7 +292,7 @@ def get_models():
         if not brand_name:
             return jsonify([])
         
-        brand = db_session.query(Brand).filter(Brand.name == brand_name).first()
+        brand = db_session.query(Brand).filter(Brand.name == brand_name.upper()).first()
         if not brand:
             return jsonify([])
             
@@ -431,19 +368,43 @@ def get_reservation(reservation_id):
             return jsonify({"error": "Brak rezerwacji"}), 404
             
         res, prod, cust = res_tuple
+        
         return jsonify({
-            "reservation_id": res.id,
-            "customer_id": cust.id,
-            "product_id": prod.id,
-            "advance": res.advance,
-            "adnotation": res.adnotation,
-            "adnotation_pub": res.adnotation_pub,
-            "form": res.form,
-            "paid": res.paid,
-            "term": res.term,
-            "delivery": res.delivery,
-            "payment_method": res.payment_method,
-            "string_order_id": res.string_order_id
+            "reservation": {
+                "id": res.id,
+                "advance": res.advance,
+                "adnotation": res.adnotation,
+                "adnotation_pub": res.adnotation_pub,
+                "form": res.form,
+                "paid": res.paid,
+                "term": res.term,
+                "delivery": res.delivery,
+                "payment_method": res.payment_method,
+                "string_order_id": res.string_order_id,
+                "date": res.date.strftime("%Y-%m-%dT%H:%M:%S") if res.date else None
+            },
+            "product": {
+                "id": prod.id,
+                "brand": prod.brand,
+                "model": prod.model,
+                "colour": prod.colour,
+                "year": prod.year,
+                "price": prod.price,
+                "old_price": prod.old_price,
+                "state": prod.state,
+                "order_id": prod.order_id,
+                "expected_delivery": prod.expected_delivery.strftime('%Y-%m-%d') if prod.expected_delivery else None
+            },
+            "customer": {
+                "id": cust.id,
+                "name": cust.name,
+                "phone": cust.phone,
+                "email": cust.email,
+                "pesel": cust.pesel,
+                "nip": cust.nip,
+                "company_name": cust.company_name,
+                "adress": cust.adress
+            }
         })
     except Exception as e:
         app.logger.error(f"[ERROR] {e}")
@@ -534,9 +495,9 @@ def get_first_free_element():
     If delivery is not given then search for a product with no delivery info.
     """
     try:
-        brand_given = request.args.get("brand")
-        model_given = request.args.get("model")
-        colour_given = request.args.get("colour")
+        brand_given = request.args.get("brand", "").upper()
+        model_given = request.args.get("model", "").upper()
+        colour_given = request.args.get("colour", "").upper()
         year_given = request.args.get("year")
         delivery_given = request.args.get("delivery")
         
@@ -573,6 +534,7 @@ def get_first_free_element():
     except Exception as e:
         app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/api/reservations/next_id", methods=["GET"])
 @require_apikey
@@ -727,15 +689,18 @@ def add_colour():
         return jsonify({"error": f"Błąd dodawania koloru: {e}"}), 400
 
 
-@app.route("/api/colours/<name>", methods=["DELETE"])
+@app.route("/api/colours/", methods=["DELETE"])
 @require_apikey
 @limiter.limit("2 per minute")
-def drop_colour(name):
+def drop_colour():
     """ 
-    Drops colour (name arg) from colours table.
+    Drops colour (name arg from JSON) from colours table.
     """
+    data = request.get_json()
+    name = data.get("name", "")
+    
     try:
-        col = db_session.query(Colour).filter(Colour.name == name).first()
+        col = db_session.query(Colour).filter(Colour.name == name.upper()).first()
         if col:
             db_session.delete(col)
             db_commit_update(db_session)
@@ -765,15 +730,18 @@ def add_brand():
         app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": f"Błąd dodawania marki: {e}"}), 400
 
-@app.route("/api/brands/<name>", methods=["DELETE"])
+@app.route("/api/brands/", methods=["DELETE"])
 @require_apikey
 @limiter.limit("2 per minute")
-def drop_brand(name):
+def drop_brand():
     """ 
-    Drops brand (name arg) from brands table.
+    Drops brand (name arg from JSON) from brands table.
     """
+    data = request.get_json()
+    name = data.get("name", "")
+    
     try:
-        brand = db_session.query(Brand).filter(Brand.name == name).first()
+        brand = db_session.query(Brand).filter(Brand.name == name.upper()).first()
         if brand:
             db_session.delete(brand)
             db_commit_update(db_session)
@@ -817,8 +785,8 @@ def drop_model():
     Drops model (model arg) with brand (brand arg) from models table.
     """
     data = request.get_json()
-    brand_name = data.get("brand")
-    model_name = data.get("model")
+    brand_name = data.get("brand", "").upper()
+    model_name = data.get("model", "").upper()
     try:
         brand = db_session.query(Brand).filter(Brand.name == brand_name).first()
         if not brand:
@@ -827,13 +795,13 @@ def drop_model():
         if model:
             db_session.delete(model)
             db_commit_update(db_session)
-            return jsonify({"message": "Usunięto kolor"}), 200
+            return jsonify({"message": "Usunięto model"}), 200
         
         return jsonify({"message": "Nie ma takiego modelu"}), 404
     except Exception as e:
         db_session.rollback()
         app.logger.error(f"[ERROR] {e}")
-        return jsonify({"error": f"Błąd usuwania koloru: {e}"}), 400
+        return jsonify({"error": f"Błąd usuwania modelu: {e}"}), 400
 
 
 @app.route("/api/products/<int:product_id>", methods=["PUT"])
@@ -1002,5 +970,4 @@ def drop_customer(customer_id):
 
 
 
-if __name__ == "__main__":
-    app.run(debug=True)
+application = app
