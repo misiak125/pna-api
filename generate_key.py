@@ -2,6 +2,7 @@ import hashlib
 import secrets
 from src import db_session
 from src.models import ApiKey
+import sys 
 
 def add_key(username):
     raw_key = secrets.token_hex(16)
@@ -15,3 +16,11 @@ def add_key(username):
         print(f"Klucz: {raw_key}\n")
     except Exception as e:
         print(f"[ERROR] {e}")
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("\n[BŁĄD] Nie podano nazwy użytkownika.")
+        print("Prawidłowe użycie: python generate_key.py <nazwa_pracownika>\n")
+    else:
+        username = sys.argv[1]
+        generate_and_save_key(username)
