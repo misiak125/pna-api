@@ -692,7 +692,7 @@ def add_colour():
 @app.route("/api/colours/", methods=["DELETE"])
 @require_apikey
 @limiter.limit("2 per minute")
-def drop_colour(name):
+def drop_colour():
     """ 
     Drops colour (name arg from JSON) from colours table.
     """
@@ -733,7 +733,7 @@ def add_brand():
 @app.route("/api/brands/", methods=["DELETE"])
 @require_apikey
 @limiter.limit("2 per minute")
-def drop_brand(name):
+def drop_brand():
     """ 
     Drops brand (name arg from JSON) from brands table.
     """
