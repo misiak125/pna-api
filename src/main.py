@@ -292,7 +292,7 @@ def get_models():
         if not brand_name:
             return jsonify([])
         
-        brand = db_session.query(Brand).filter(Brand.name == brand_name).first()
+        brand = db_session.query(Brand).filter(Brand.name == brand_name.upper()).first()
         if not brand:
             return jsonify([])
             
@@ -495,9 +495,9 @@ def get_first_free_element():
     If delivery is not given then search for a product with no delivery info.
     """
     try:
-        brand_given = request.args.get("brand")
-        model_given = request.args.get("model")
-        colour_given = request.args.get("colour")
+        brand_given = request.args.get("brand", "").upper()
+        model_given = request.args.get("model", "").upper()
+        colour_given = request.args.get("colour", "").upper()
         year_given = request.args.get("year")
         delivery_given = request.args.get("delivery")
         
@@ -534,6 +534,7 @@ def get_first_free_element():
     except Exception as e:
         app.logger.error(f"[ERROR] {e}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/api/reservations/next_id", methods=["GET"])
 @require_apikey
@@ -693,10 +694,13 @@ def add_colour():
 @limiter.limit("2 per minute")
 def drop_colour(name):
     """ 
-    Drops colour (name arg) from colours table.
+    Drops colour (name arg from JSON) from colours table.
     """
+    data = request.get_json()
+    name = data.get("name", "")
+    
     try:
-        col = db_session.query(Colour).filter(Colour.name == name).first()
+        col = db_session.query(Colour).filter(Colour.name == name.upper()).first()
         if col:
             db_session.delete(col)
             db_commit_update(db_session)
@@ -731,10 +735,13 @@ def add_brand():
 @limiter.limit("2 per minute")
 def drop_brand(name):
     """ 
-    Drops brand (name arg) from brands table.
+    Drops brand (name arg from JSON) from brands table.
     """
+    data = request.get_json()
+    name = data.get("name", "")
+    
     try:
-        brand = db_session.query(Brand).filter(Brand.name == name).first()
+        brand = db_session.query(Brand).filter(Brand.name == name.upper()).first()
         if brand:
             db_session.delete(brand)
             db_commit_update(db_session)
@@ -778,8 +785,8 @@ def drop_model():
     Drops model (model arg) with brand (brand arg) from models table.
     """
     data = request.get_json()
-    brand_name = data.get("brand")
-    model_name = data.get("model")
+    brand_name = data.get("brand", "").upper()
+    model_name = data.get("model", "").upper()
     try:
         brand = db_session.query(Brand).filter(Brand.name == brand_name).first()
         if not brand:
@@ -788,13 +795,13 @@ def drop_model():
         if model:
             db_session.delete(model)
             db_commit_update(db_session)
-            return jsonify({"message": "Usunięto kolor"}), 200
+            return jsonify({"message": "Usunięto model"}), 200
         
         return jsonify({"message": "Nie ma takiego modelu"}), 404
     except Exception as e:
         db_session.rollback()
         app.logger.error(f"[ERROR] {e}")
-        return jsonify({"error": f"Błąd usuwania koloru: {e}"}), 400
+        return jsonify({"error": f"Błąd usuwania modelu: {e}"}), 400
 
 
 @app.route("/api/products/<int:product_id>", methods=["PUT"])
