@@ -66,7 +66,7 @@ def enforce_https():
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["500 per day", "60 per minute"], 
+    default_limits=["500 per day", "20 per minute"], 
     storage_uri="memory://"
 )
 
