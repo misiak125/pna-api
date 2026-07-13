@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
 from flask_limiter import Limiter
@@ -10,7 +10,6 @@ from logging.handlers import RotatingFileHandler
 from werkzeug.exceptions import HTTPException
 import traceback
 from flask_status import FlaskStatus
-import request
 
 
 app = Flask(__name__)
