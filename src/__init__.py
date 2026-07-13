@@ -48,6 +48,20 @@ def handle_unhandled_exception(e):
     }), 500
 
 
+""" ------------------ blocking http connection -----------------------------"""
+@app.before_request
+def enforce_https():
+    """
+    Blokuje każde żądanie, które nie przyszło przez HTTPS.
+    """
+    if request.host.startswith('localhost') or request.host.startswith('127.0.0.1'):
+        return None
+
+    proto = request.headers.get('X-Forwarded-Proto', request.scheme)
+    if proto.lower() != 'https':
+        return jsonify({"error": "Nieszyfrowane połączenia (HTTP) są zablokowane. Użyj HTTPS."}), 403
+
+
 """ ---------------------- limits configuration ------------------------- """
 limiter = Limiter(
     get_remote_address,
