@@ -3,7 +3,7 @@ import time
 import subprocess
 from datetime import datetime
 import glob
-from os import load_dotenv
+from dotenv import load_dotenv
 # ==========================================
 # KONFIGURACJA
 # ==========================================
