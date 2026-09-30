@@ -15,7 +15,7 @@ DB_NAME = os.getenv("DB_NAME")
 DB_HOST = os.getenv("DB_HOST")
 
 # Przechowujemy kopie w folderze 'backups' w głównym katalogu aplikacji
-BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backups")
+BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backups")
 # Ile dni wstecz chcemy trzymać pliki
 RETENTION_DAYS = 10
 
