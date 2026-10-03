@@ -40,7 +40,7 @@ def run_backup():
     # Running backup command and handling potential errors.
     try:
         print("[LOCAL] Creating and saving backup file...")
-        subprocess.run(dump_cmd, shell=True, check=True)
+        subprocess.run(dump_cmd, shell=True, env=env, check=True)
         print(f"[LOCAL][SUCCESS] Saved to: {backup_file_path}")
     except subprocess.CalledProcessError as e:
         print(f"[LOCAL][ERROR] An error occurred while exporting: {e}")
