@@ -16,21 +16,24 @@ B2_APP_KEY = os.getenv('B2_APP_KEY')
 B2_BUCKET_NAME = os.getenv('B2_BUCKET_NAME')
 
 
-BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backups", "tmp")
-date_str = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-filename = f"backup_{DB_NAME}_{date_str}.sql.gz"
-temp_path = os.path.join(BACKUP_DIR, filename)
+TMP_BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backups", "tmp")
 
 def run_backup():
-    print("[B2] Rozpoczynam zrzut bazy danych...")
+    print("[B2] Starting backup...")
     # Passing db password via enviroment 
     env = os.environ.copy()
     env['MYSQL_PWD'] = DB_PASS
     
     # Run mysqldump command and compress the output to a temporary file
-    if not os.path.exists(BACKUP_DIR):
-        os.makedirs(BACKUP_DIR)
-    dump_cmd = f"mysqldump -h {DB_HOST} -u {DB_USER} {DB_NAME} --routines | gzip > {temp_path}"
+    if not os.path.exists(TMP_BACKUP_DIR):
+        os.makedirs(TMP_BACKUP_DIR)
+
+    # Creating a timestamped filename for the backup
+    date_str = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    filename = f"backup_{DB_NAME}_{date_str}.sql.gz"
+    temp_file_path = os.path.join(TMP_BACKUP_DIR, filename)
+
+    dump_cmd = f"mysqldump -h {DB_HOST} -u {DB_USER} {DB_NAME} --routines | gzip > {temp_file_path}"
     subprocess.run(dump_cmd, shell=True, env=env, check=True)
 
     print("[B2] Authorising Backblaze B2...")
@@ -41,13 +44,13 @@ def run_backup():
     print(f"[B2] Sending file {filename}...")
     bucket = b2_api.get_bucket_by_name(B2_BUCKET_NAME)
     bucket.upload_local_file(
-        local_file=temp_path,
+        local_file=temp_file_path,
         file_name=filename,
     )
 
     print("[B2] Cleaning up...")
-    if os.path.exists(temp_path):
-        os.remove(temp_path)
+    if os.path.exists(temp_file_path):
+        os.remove(temp_file_path)
         
     print("[B2] Backup completed successfully.")
 
