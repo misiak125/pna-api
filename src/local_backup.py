@@ -18,8 +18,10 @@ DB_HOST = os.getenv("DB_HOST")
 BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backups")
 # Ile dni wstecz chcemy trzymać pliki
 RETENTION_DAYS = 10
+DAY_IN_SECONDS = 24 * 60 * 60
 
 def run_backup():
+    print("[LOCAL] Rozpoczynam tworzenie kopii zapasowej...")
     # Upewniamy się, że folder istnieje
     if not os.path.exists(BACKUP_DIR):
         os.makedirs(BACKUP_DIR)
@@ -29,14 +31,17 @@ def run_backup():
     backup_file = os.path.join(BACKUP_DIR, f"backup_{DB_NAME}_{date_str}.sql.gz")
 
     # Budujemy komendę systemową: dump -> kompresja gzip -> plik
-    dump_cmd = f"mysqldump -h {DB_HOST} -u {DB_USER} -p'{DB_PASS}' {DB_NAME} --routines | gzip > {backup_file}"
+
+    env = os.environ.copy()
+    env['MYSQL_PWD'] = DB_PASS
+    dump_cmd = f"mysqldump -h {DB_HOST} -u {DB_USER} {DB_NAME} --routines | gzip > {backup_file}"
 
     try:
-        print("Rozpoczynam tworzenie kopii zapasowej...")
+        print("[LOCAL] Rozpoczynam tworzenie pliku kopii zapasowej...")
         subprocess.run(dump_cmd, shell=True, check=True)
-        print(f"[SUKCES] Zapisano w: {backup_file}")
+        print(f"[LOCAL][SUCCESS] Zapisano w: {backup_file}")
     except subprocess.CalledProcessError as e:
-        print(f"[BŁĄD] Wystąpił problem podczas eksportu: {e}")
+        print(f"[LOCAL][ERROR] Wystąpił problem podczas eksportu: {e}")
         return
 
     # ==========================================
@@ -48,12 +53,12 @@ def run_backup():
     # Szukamy wszystkich plików .sql.gz w folderze
     for f in glob.glob(os.path.join(BACKUP_DIR, "*.sql.gz")):
         # Jeśli czas modyfikacji pliku jest starszy niż określona liczba dni
-        if os.stat(f).st_mtime < now - (RETENTION_DAYS * 86400):
+        if os.stat(f).st_mtime < now - (RETENTION_DAYS * DAY_IN_SECONDS):
             os.remove(f)
             deleted_count += 1
             
     if deleted_count > 0:
-        print(f"[SUKCES] Usunięto {deleted_count} starych kopii zapasowych.")
+        print(f"[LOCAL][SUCCESS] Usunięto {deleted_count} starych kopii zapasowych.")
 
 if __name__ == "__main__":
     run_backup()
