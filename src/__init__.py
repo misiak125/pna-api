@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
+from sqlalchemy.engine import URL
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import logging
@@ -80,12 +81,29 @@ def ratelimit_handler(e):
 
 """ ---------------------- DB configuration ------------------------- """
 load_dotenv()
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+db_user = os.getenv("DB_USER")
+db_pass = os.getenv("DB_PASS") or os.getenv("DB_ROOT_PASS")
+db_host = os.getenv("DB_HOST", "127.0.0.1")
+db_port = int(os.getenv("DB_PORT", "3306"))
+db_name = os.getenv("DB_NAME")
 
-if not SQLALCHEMY_DATABASE_URL:
-    raise ValueError("DATABASE_URL not in .env")
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+if not all([db_user, db_pass, db_name]):
+    raise ValueError(
+        "Brak wymaganych zmiennych środowiskowych (DB_USER, DB_PASSWORD/DB_ROOT_PASSWORD, DB_NAME) w pliku .env"
+    )
+
+
+database_url = URL.create(
+    drivername="mysql+pymysql",
+    username=db_user,
+    password=db_pass,
+    host=db_host,
+    port=db_port,
+    database=db_name,
+)
+
+engine = create_engine(database_url, pool_pre_ping=True, echo=False)
 Base = declarative_base()
 
 from src.models import Product, Customer, Reservation, Brand, Model, Colour, AppState, ApiKey
