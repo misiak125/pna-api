@@ -5,16 +5,21 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm, cm
 from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from . import con
-from .utils import resource_path, print_file, short_price
+from reportlab.pdfbase.ttfonts import TTFError, TTFont
+from src import db_session
+from .utils import resource_path, short_price
 from reportlab.lib.utils import simpleSplit
 from PIL import Image
+from .models import Reservation, Product, Customer
 
 def generate_pdf_confirmation(order_id):
     if order_id == -1:
         return
-    reservation = con.get_full_reservation(order_id)
+    reservation = db_session.query(Reservation, Product, Customer)\
+                .join(Product, Reservation.product_id == Product.id)\
+                .join(Customer, Reservation.customer_id == Customer.id)\
+                .filter(Reservation.id == order_id)\
+                .first()
     document_title = 'potwierdzenie'
     title = "Potwierdzenie rezerwacji"
     directory = os.path.join(os.path.expanduser("~"), "Dokumenty")
@@ -27,20 +32,38 @@ def generate_pdf_confirmation(order_id):
     file_name = re.sub(r'[^a-zA-Z0-9]', '', reservation.Customer.name.lower())
     file_num = 1
     while os.path.exists(os.path.join(directory, file_name+str(file_num)+'.pdf')): file_num+=1
-    file_name=file_name+str(file_num)+'.pdf'
+    if file_num != 1:
+        file_name = file_name+str(file_num)+'.pdf'
+    else:
+        file_name = file_name+'.pdf'
     header = Image.open(resource_path(os.path.normpath('static/header2.jpg')))
     #print(pdfmetrics.getRegisteredFontNames())
-    try:
-        pdfmetrics.registerFont(TTFont('Arial', 'arial.ttf')) 
-        pdfmetrics.registerFont(TTFont('Arial-Bold', 'arialbd.ttf'))
-    except:
-        pdfmetrics.registerFont(TTFont('Arial', 'Arial.ttf')) 
-        pdfmetrics.registerFont(TTFont('Arial-Bold', 'Arialbd.ttf'))
+    ARIAL_CANDIDATES = [
+        ('arial.ttf', 'arialbd.ttf'),
+        ('Arial.ttf', 'Arialbd.ttf'),
+        ('Arial.ttf', 'Arial Bold.ttf'),
+    ]
+
+    font = 'Helvetica'
+    font_bold = 'Helvetica-Bold'
+
+    for regular_file, bold_file in ARIAL_CANDIDATES:
+        try:
+            pdfmetrics.registerFont(TTFont('Arial', regular_file))
+            pdfmetrics.registerFont(TTFont('Arial-Bold', bold_file))
+            
+            pdfmetrics.registerFontFamily('Arial', normal='Arial', bold='Arial-Bold')
+            
+            font = 'Arial'
+            font_bold = 'Arial-Bold'
+            break
+        except (TTFError, FileNotFoundError, OSError):
+            continue
+
     pdf = canvas.Canvas(os.path.join(directory, file_name))
     #pdf = canvas.Canvas(file_name)
     pdf.setTitle(document_title) 
     font_size = 11
-    font = 'Arial'
     pdf.setFont(font, font_size)
     width = pdf._pagesize[0]
     padding = 15 * mm
@@ -59,15 +82,15 @@ def generate_pdf_confirmation(order_id):
     
     pdf.line(25, (29.7-4)*cm, 555, (29.7-4)*cm) 
     lasty -= 3*interline
-    pdf.drawRightString(210*mm-padding, lasty, f"Podkowa Leśna, dn. {reservation.Reservation.date.strftime('%d.%m.%Y')}r.")
+    pdf.drawRightString(210*mm-padding, lasty, f"Podkowa Leśna, dn. {reservation.Reservation.date.strftime('%d.%m.%Y')}r.")
     lasty -= interline
-    pdf.setFont('Arial-Bold', font_size)
-    pdf.drawCentredString(290, lasty, "Zamówienie nr. " + str(reservation.Reservation.string_order_id))
-    pdf.setFont('Arial', font_size)
+    pdf.setFont(font_bold, font_size)
+    pdf.drawCentredString(290, lasty, "Zamówienie nr. " + str(reservation.Reservation.string_order_id))
+    pdf.setFont(font, font_size)
     lasty -= binterline
 
 
-    pdf.drawString(padding, lasty, "SPRZEDAJĄCY:")
+    pdf.drawString(padding, lasty, "SPRZEDAJĄCY:")
     pdf.line(padding, lasty-3, padding+83, lasty-3)
     lasty -= binterline
     lines = details.splitlines()
@@ -77,7 +100,7 @@ def generate_pdf_confirmation(order_id):
 
     lasty -= interline
 
-    buyer_details = ["Imię i nazwisko: "+reservation.Customer.name, "Tel: " + reservation.Customer.phone]
+    buyer_details = ["Imię i nazwisko: "+reservation.Customer.name, "Tel: " + reservation.Customer.phone]
     if reservation.Customer.email != "" and reservation.Customer.email is not None:
         buyer_details.append("Adres e-mail: "+reservation.Customer.email)
     if reservation.Customer.company_name != "" and reservation.Customer.company_name is not None:
@@ -89,7 +112,7 @@ def generate_pdf_confirmation(order_id):
     if reservation.Customer.adress != "" and reservation.Customer.adress is not None:
         buyer_details.append("Pełny adres: " + reservation.Customer.adress.replace("\n", ", ").replace("\t", ""))
 
-    pdf.drawString(padding, lasty, "KUPUJĄCY:")
+    pdf.drawString(padding, lasty, "KUPUJĄCY:")
     pdf.line(padding, lasty-3, padding+62, lasty-3)
     lasty -= binterline
     
@@ -98,7 +121,7 @@ def generate_pdf_confirmation(order_id):
         lasty -= interline
 
     lasty -= interline
-    pdf.drawString(padding, lasty, "Kupujący zamawia następujący pojazd:")
+    pdf.drawString(padding, lasty, "Kupujący zamawia następujący pojazd:")
     pdf.line(padding, lasty-3, padding+192, lasty-3)
 
     lasty -= binterline
@@ -110,10 +133,10 @@ def generate_pdf_confirmation(order_id):
     lasty -= 2*interline
     pdf.drawString(padding, lasty, "CENA POJAZDU: "+str(short_price(int(reservation.Product.price))).replace('.', ',')+'zł')
     lasty -= interline
-    pdf.drawString(padding, lasty, "Słownie: "+slownie(int(reservation.Product.price), 'krótka')+' PLN')
+    pdf.drawString(padding, lasty, "Słownie: "+slownie(int(reservation.Product.price), 'krótka')+' PLN')
     lasty -= 2*interline
     
-    zastrzezenie = f"SPRZEDAJĄCY zastrzega prawo do zmiany ceny pojazdu w przypadku jej zmiany w oficjalnym cenniku importera marki {reservation.Product.brand} Polska."
+    zastrzezenie = f"SPRZEDAJĄCY zastrzega prawo do zmiany ceny pojazdu w przypadku jej zmiany w oficjalnym cenniku importera marki {reservation.Product.brand} Polska."
     lines = simpleSplit(zastrzezenie, font, font_size, max_width)
     
     for line in lines:
@@ -126,7 +149,7 @@ def generate_pdf_confirmation(order_id):
     
 
 
-    if reservation.Reservation.payment_method not in ["gotówka", "karta"]:
+    if reservation.Reservation.payment_method not in ["gotówka", "karta"]:
         accounts = json.load(open(resource_path("static/acc_numbers.json"), "r", encoding="utf-8"))
         acc_num = accounts[reservation.Reservation.payment_method]
         if not pay_full:
@@ -135,15 +158,15 @@ def generate_pdf_confirmation(order_id):
             else: zadzal = 'zaliczki'
         else:
             pay = reservation.Product.price
-            zadzal = "pełnej kwoty wartości pojazdu"
-        zaliczka = f"KUPUJĄCY zobowiązuje się do wpłaty {zadzal} w wysokości {short_price(pay)}zł (słownie: {slownie(int(pay), 'krótka')} PLN) na numer rachunku: {acc_num}."
+            zadzal = "pełnej kwoty wartości pojazdu"
+        zaliczka = f"KUPUJĄCY zobowiązuje się do wpłaty {zadzal} w wysokości {short_price(pay)}zł (słownie: {slownie(int(pay), 'krótka')} PLN) na numer rachunku: {acc_num}."
         lines = simpleSplit(zaliczka, font, font_size, max_width)
         for line in lines:
             pdf.drawString(padding, lasty, line)
             lasty-=interline
         lasty -= interline
         zadzal = zadzal.replace("pełnej kwoty ", "")
-        adit_info = f"Zamówienie zostanie przyjęte do realizacji w momencie zaksięgowania kwoty {zadzal} na rachunku SPRZEDAJĄCEGO."
+        adit_info = f"Zamówienie zostanie przyjęte do realizacji w momencie zaksięgowania kwoty {zadzal} na rachunku SPRZEDAJĄCEGO."
         lines = simpleSplit(adit_info, font, font_size, max_width)
         for line in lines:
             pdf.drawString(padding, lasty, line)
@@ -153,15 +176,15 @@ def generate_pdf_confirmation(order_id):
         if not pay_full:
             pay = reservation.Reservation.advance
             if reservation.Reservation.form: zadzal = 'zadatek'
-            else: zadzal = 'zaliczkę'
+            else: zadzal = 'zaliczkę'
         else:
             pay = reservation.Product.price
-            zadzal = "pełną kwotę wartości pojazdu"
+            zadzal = "pełną kwotę wartości pojazdu"
 
-        if reservation.Reservation.payment_method == "gotówka": how = 'gotówką'
-        else: how = 'kartą/BLIK'
+        if reservation.Reservation.payment_method == "gotówka": how = 'gotówką'
+        else: how = 'kartą/BLIK'
 
-        zaliczka = f"KUPUJĄCY wpłacił {zadzal} w wysokości {short_price(pay)}zł (słownie: {slownie(int(pay), 'krótka')} PLN) {how}."
+        zaliczka = f"KUPUJĄCY wpłacił {zadzal} w wysokości {short_price(pay)}zł (słownie: {slownie(int(pay), 'krótka')} PLN) {how}."
         lines = simpleSplit(zaliczka, font, font_size, max_width)
         for line in lines:
             pdf.drawString(padding, lasty, line)
@@ -171,7 +194,7 @@ def generate_pdf_confirmation(order_id):
 
 
     
-    lines = simpleSplit(f"Termin realizacji zamówienia: {reservation.Reservation.term}", font, font_size, max_width)
+    lines = simpleSplit(f"Przewidywany termin realizacji zamówienia: {reservation.Reservation.term}", font, font_size, max_width)
     for line in lines:
         pdf.drawString(padding, lasty, line)
         lasty-=interline
@@ -196,12 +219,13 @@ def generate_pdf_confirmation(order_id):
 
     lasty -= 2 * interline
 
-    pdf.drawString(2.5*padding, lasty, "SPRZEDAJĄCY")
-    pdf.drawRightString(210*mm - 2.5*padding, lasty, "KUPUJĄCY")
+    pdf.drawString(2.5*padding, lasty, "SPRZEDAJĄCY")
+    pdf.drawRightString(210*mm - 2.5*padding, lasty, "KUPUJĄCY")
 
     pdf.save()
 
-    print_file(os.path.join(directory, file_name))
+    #print_file(os.path.join(directory, file_name))
+
 
 
 def slownie(liczba:int, skala:str='długa', jeden:bool=True):
@@ -274,3 +298,6 @@ def slownie(liczba:int, skala:str='długa', jeden:bool=True):
 	
 	słowa.insert(0, znak)
 	return ' '.join(s for s in słowa if s)
+
+
+generate_pdf_confirmation(427)

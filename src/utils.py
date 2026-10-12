@@ -1,10 +1,11 @@
+from math import trunc
 import os
 from functools import wraps
 from flask import request, jsonify
 from src import db_session
 from src.models import ApiKey, AppState
 from datetime import datetime
-from sqlalchemy import func
+from sqlalchemy import String, func, or_
 import hashlib
 
 def require_apikey(view_function):
@@ -67,3 +68,14 @@ def apply_search_filters(query, search_string: str, columns: list):
         or_conditions = [func.cast(col, String).ilike(search_term) for col in columns]
         query = query.filter(or_(*or_conditions))
     return query
+
+
+def short_price(price):
+    if price % 1.0 == 0.0:
+        return str(trunc(price))
+    else:
+        return f"{price:.2f}"
+
+
+def resource_path(relative_path):
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
