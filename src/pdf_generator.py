@@ -13,6 +13,7 @@ from PIL import Image
 from .models import Reservation, Product, Customer
 
 def generate_pdf_confirmation(order_id):
+    # Validate arguments and retrieve reservation data from the database.
     if order_id == -1:
         return
     reservation = db_session.query(Reservation, Product, Customer)\
@@ -20,8 +21,11 @@ def generate_pdf_confirmation(order_id):
                 .join(Customer, Reservation.customer_id == Customer.id)\
                 .filter(Reservation.id == order_id)\
                 .first()
-    document_title = 'potwierdzenie'
-    title = "Potwierdzenie rezerwacji"
+    if not reservation:
+        return
+
+    # Create document directory.
+    document_title = "Potwierdzenie rezerwacji"
     directory = os.path.join(os.path.expanduser("~"), "Dokumenty")
     if not os.path.isdir(directory):
         directory = os.path.join(os.path.expanduser("~"), "Documents")
@@ -36,8 +40,11 @@ def generate_pdf_confirmation(order_id):
         file_name = file_name+str(file_num)+'.pdf'
     else:
         file_name = file_name+'.pdf'
-    header = Image.open(resource_path(os.path.normpath('static/header2.jpg')))
-    #print(pdfmetrics.getRegisteredFontNames())
+    pdf = canvas.Canvas(os.path.join(directory, file_name))
+    pdf.setTitle(document_title) 
+
+    
+    # Determine font to use, preferring Arial if available.
     ARIAL_CANDIDATES = [
         ('arial.ttf', 'arialbd.ttf'),
         ('Arial.ttf', 'Arialbd.ttf'),
@@ -60,9 +67,6 @@ def generate_pdf_confirmation(order_id):
         except (TTFError, FileNotFoundError, OSError):
             continue
 
-    pdf = canvas.Canvas(os.path.join(directory, file_name))
-    #pdf = canvas.Canvas(file_name)
-    pdf.setTitle(document_title) 
     font_size = 11
     pdf.setFont(font, font_size)
     width = pdf._pagesize[0]
@@ -70,25 +74,38 @@ def generate_pdf_confirmation(order_id):
     max_width = 180 * mm
     interline = 13
     binterline = interline*1.333
+
+
+    # Draw header and contact information.
+    header = Image.open(resource_path(os.path.normpath('static/header2.jpg')))
     pdf.drawInlineImage(header, 0, (29.7-3.75)*cm, width=11*cm, height=3.5*cm)
-    contact = open(resource_path(os.path.normpath('static/seller_contact.txt')), "r", encoding="utf-8").read().strip()
-    details = open(resource_path(os.path.normpath('static/seller_details.txt')), 'r', encoding="utf-8").read().strip()
-    
+
+    contact = open(resource_path(os.path.normpath('static/seller_contact.txt')), 
+                   "r", encoding="utf-8").read().strip()
+
     lines = contact.splitlines()
     lasty=804
-    for  line in lines:
+    for line in lines:
         pdf.drawRightString(width - padding - 5*mm, lasty, line)
         lasty-=interline
     
     pdf.line(25, (29.7-4)*cm, 555, (29.7-4)*cm) 
     lasty -= 3*interline
-    pdf.drawRightString(210*mm-padding, lasty, f"Podkowa Leśna, dn. {reservation.Reservation.date.strftime('%d.%m.%Y')}r.")
+
+    # Draw top line with date.
+    pdf.drawRightString(210*mm-padding, lasty, 
+                        f"Podkowa Leśna, dn. {reservation.Reservation.date.strftime('%d.%m.%Y')}r.")
     lasty -= interline
+
+    # Draw centered bold order number.
     pdf.setFont(font_bold, font_size)
     pdf.drawCentredString(290, lasty, "Zamówienie nr. " + str(reservation.Reservation.string_order_id))
     pdf.setFont(font, font_size)
     lasty -= binterline
 
+    # Draw seller details.
+    details = open(resource_path(os.path.normpath('static/seller_details.txt')), 
+                   'r', encoding="utf-8").read().strip()
 
     pdf.drawString(padding, lasty, "SPRZEDAJĄCY:")
     pdf.line(padding, lasty-3, padding+83, lasty-3)
@@ -100,6 +117,7 @@ def generate_pdf_confirmation(order_id):
 
     lasty -= interline
 
+    # Draw buyer details. Only include non-empty fields.
     buyer_details = ["Imię i nazwisko: "+reservation.Customer.name, "Tel: " + reservation.Customer.phone]
     if reservation.Customer.email != "" and reservation.Customer.email is not None:
         buyer_details.append("Adres e-mail: "+reservation.Customer.email)
@@ -120,6 +138,7 @@ def generate_pdf_confirmation(order_id):
         pdf.drawString(padding, lasty, line)
         lasty -= interline
 
+    # Draw vehicle details and price information.
     lasty -= interline
     pdf.drawString(padding, lasty, "Kupujący zamawia następujący pojazd:")
     pdf.line(padding, lasty-3, padding+192, lasty-3)
@@ -135,7 +154,8 @@ def generate_pdf_confirmation(order_id):
     lasty -= interline
     pdf.drawString(padding, lasty, "Słownie: "+slownie(int(reservation.Product.price), 'krótka')+' PLN')
     lasty -= 2*interline
-    
+
+    # Draw additional information and payment instructions.
     zastrzezenie = f"SPRZEDAJĄCY zastrzega prawo do zmiany ceny pojazdu w przypadku jej zmiany w oficjalnym cenniku importera marki {reservation.Product.brand} Polska."
     lines = simpleSplit(zastrzezenie, font, font_size, max_width)
     
@@ -146,8 +166,6 @@ def generate_pdf_confirmation(order_id):
 
     if reservation.Reservation.advance in [0, reservation.Product.price]: pay_full = True
     else: pay_full = False 
-    
-
 
     if reservation.Reservation.payment_method not in ["gotówka", "karta"]:
         accounts = json.load(open(resource_path("static/acc_numbers.json"), "r", encoding="utf-8"))
@@ -191,9 +209,7 @@ def generate_pdf_confirmation(order_id):
             lasty-=interline
         lasty -= interline
 
-
-
-    
+    # Draw expected delivery date and pickup information.
     lines = simpleSplit(f"Przewidywany termin realizacji zamówienia: {reservation.Reservation.term}", font, font_size, max_width)
     for line in lines:
         pdf.drawString(padding, lasty, line)
@@ -208,7 +224,8 @@ def generate_pdf_confirmation(order_id):
             pdf.drawString(padding, lasty, line)
             lasty-=interline
         lasty -= interline
-    
+
+    # Draw additional annotations if present.
     if reservation.Reservation.adnotation_pub != "" and reservation.Reservation.adnotation_pub is not None:
         adnotations = f"Dodatkowe informacje: {reservation.Reservation.adnotation_pub}"
         lines = simpleSplit(adnotations, font, font_size, max_width)
@@ -216,15 +233,13 @@ def generate_pdf_confirmation(order_id):
             pdf.drawString(padding, lasty, line)
             lasty-=interline
 
-
     lasty -= 2 * interline
 
+    # Draw signature lines for seller and buyer.
     pdf.drawString(2.5*padding, lasty, "SPRZEDAJĄCY")
     pdf.drawRightString(210*mm - 2.5*padding, lasty, "KUPUJĄCY")
 
     pdf.save()
-
-    #print_file(os.path.join(directory, file_name))
 
 
 
