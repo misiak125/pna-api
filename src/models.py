@@ -1,5 +1,5 @@
 from src import Base
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -17,7 +17,7 @@ class Product(Base):
     state = Column(String(64))
     order_id = Column(String(64))
     expected_delivery = Column(DateTime)
-    history = Column(String(1000), nullable=False, default="?")
+    history = Column(Text, nullable=False, default="")
     deleted = Column(Boolean, nullable=False, default=False)
 
 class Customer(Base):
@@ -32,7 +32,7 @@ class Customer(Base):
     nip = Column(String(16))
     adress = Column(String(128))
     company_name = Column(String(128))
-    history = Column(String(1000), nullable=False, default="?")
+    history = Column(Text, nullable=False, default="")
     deleted = Column(Boolean, nullable=False, default=False)
 
 class Reservation(Base):
@@ -45,13 +45,13 @@ class Reservation(Base):
     advance = Column(Float, nullable=False)
     adnotation = Column(String(1000))
     adnotation_pub = Column(String(1000), default="")
-    form = Column(Boolean) #0=zaliczka 1=zadatek
+    form = Column(Boolean)  # 0 = advance payment (zaliczka), 1 = earnest deposit (zadatek)
     paid = Column(Boolean)
     delivery = Column(Boolean)
     term = Column(String(128))
     payment_method = Column(String(128))
     string_order_id = Column(String(128))
-    history = Column(String(3000), nullable=False, default="?")
+    history = Column(Text, nullable=False, default="")
     deleted = Column(Boolean, nullable=False, default=False)
     
 class Brand(Base):
