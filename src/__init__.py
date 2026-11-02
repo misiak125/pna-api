@@ -21,7 +21,7 @@ FlaskStatus(app)
 if not os.path.exists('logs'):
     os.mkdir('logs')
 
-# saving logs to app.log (max 1MB oer file, max 10 old files)
+# Save logs to app.log (max 1MB per file, max 10 old files)
 file_handler = RotatingFileHandler('logs/app.log', maxBytes=1024000, backupCount=10)
 file_handler.setFormatter(logging.Formatter(
     '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
@@ -67,7 +67,7 @@ def enforce_https():
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["500 per day", "20 per minute"], 
+    default_limits=["50000 per day", "300 per minute"], 
     storage_uri="memory://"
 )
 
@@ -80,6 +80,9 @@ def ratelimit_handler(e):
 
 
 """ ---------------------- DB configuration ------------------------- """
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+if os.path.exists(env_path):
+    load_dotenv(env_path)
 load_dotenv()
 db_user = os.getenv("DB_USER")
 db_pass = os.getenv("DB_PASS") or os.getenv("DB_ROOT_PASS")
@@ -108,13 +111,13 @@ Base = declarative_base()
 
 from src.models import Product, Customer, Reservation, Brand, Model, Colour, AppState, ApiKey
 
-Base.metadata.create_all(bind=engine)
-
-
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as db_init_err:
+    app.logger.warning(f"Nie udało się połączyć z bazą danych podczas importu: {db_init_err}")
 
 SessionMaker = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 db_session = scoped_session(SessionMaker)
-
 
 
 @app.teardown_appcontext
