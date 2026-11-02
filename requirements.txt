@@ -4,4 +4,5 @@ pymysql==1.2.3
 python-dotenv==1.2.4
 Flask-Limiter==4.1.1
 flask-status==1.0.1
+reportlab==5.0.1
 b2sdk==1.14.0
