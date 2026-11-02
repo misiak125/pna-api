@@ -227,3 +227,4 @@ tmp/*
 con
 src/static/
 .DS_Store
+confirmations/
