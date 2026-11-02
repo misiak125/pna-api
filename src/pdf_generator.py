@@ -26,14 +26,16 @@ def generate_pdf_confirmation(order_id):
 
     # Create document directory.
     document_title = "Potwierdzenie rezerwacji"
-    directory = os.path.join(os.path.expanduser("~"), "Dokumenty")
+    directory = os.path.join(os.path.expanduser("~"), "pna_confirmations")
     if not os.path.isdir(directory):
-        directory = os.path.join(os.path.expanduser("~"), "Documents")
+        os.makedirs(directory)
     
     directory = os.path.join(directory, "potwierdzenia_rez")
     if not os.path.isdir(directory):
         os.mkdir(directory)
-    file_name = re.sub(r'[^a-zA-Z0-9]', '', reservation.Customer.name.lower())
+
+    file_name = re.sub(r'[^a-zA-Z0-9]', '', reservation.Customer.name.lower()) \
+        + reservation.Reservation.string_order_id.replace("/", "-")
     file_num = 1
     while os.path.exists(os.path.join(directory, file_name+str(file_num)+'.pdf')): file_num+=1
     if file_num != 1:
@@ -241,15 +243,15 @@ def generate_pdf_confirmation(order_id):
 
     pdf.save()
 
+    return file_name
+
 
 
 def slownie(liczba:int, skala:str='długa', jeden:bool=True):
-    # Zamiana liczby na slowa z polska gramatyka
-    # source: www.algorytm.org
+    # Converts integer number to Polish words with proper grammatical inflections (source: www.algorytm.org)
 	'''
-	Zamienia liczbę na zapis słowny w języku polskim.
-	Obsługuje liczby w zakresie do 10^66-1 dla długiej skali oraz 10^36-1 dla krótkiej skali.
-	Możliwe pominięcie słowa "jeden" przy potęgach tysiąca.
+	Converts integer number into Polish words.
+	Supports numbers up to 10^66-1 for long scale and 10^36-1 for short scale.
 	'''
 	if (skala == 'długa' and abs(liczba) >= 10**66) or (skala == 'krótka' and abs(liczba) >= 10**36):
 		raise ValueError('Zbyt duża liczba.')
@@ -261,8 +263,8 @@ def slownie(liczba:int, skala:str='długa', jeden:bool=True):
 	setki      = ('', 'sto',        'dwieście',    'trzysta',     'czterysta',    'pięćset',      'sześćset',      'siedemset',      'osiemset',      'dziewięćset')
 	
 
-	
-	grupy = [ #kolejne potęgi tysiąca, z formami gramatycznymi
+	# Thousands powers with Polish grammatical inflections
+	grupy = [
 		('', '', ''),
 		('tysiąc', 'tysiące', 'tysięcy'),
 	]
@@ -284,23 +286,23 @@ def slownie(liczba:int, skala:str='długa', jeden:bool=True):
 	
 	g = 0
 	while liczba != 0:
-		#Liczba jest dzielona na kolejne potęgi tysiąca, od największej.
+		# Process chunks of 1000 from highest power down
 		s = liczba % 1_000 // 100
 		d = liczba % 100 // 10
 		j = liczba % 10
 		liczba //= 1_000
 		
-		if s == d == j == 0: #brak elementów do nazwania
+		if s == d == j == 0:
 			g += 1
 			continue
 		
-		if d == 1 and j > 0: #łączymy dziesiątki i jedności w -naście
+		if d == 1 and j > 0:
 			n = j
 			d = j = 0
 		else:
 			n = 0
 		
-		#wybór formy gramatycznej
+		# Select grammatical inflection form
 		if j == 1 and s + d + n == 0:
 			forma = 0
 		elif 2 <= j <= 4:
@@ -313,6 +315,3 @@ def slownie(liczba:int, skala:str='długa', jeden:bool=True):
 	
 	słowa.insert(0, znak)
 	return ' '.join(s for s in słowa if s)
-
-
-generate_pdf_confirmation(427)
