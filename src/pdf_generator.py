@@ -219,7 +219,7 @@ def generate_pdf_confirmation(order_id):
     lasty -= interline
         
     if not reservation.Reservation.delivery:
-        adres = open(resource_path(os.path.normpath("static/seller_adress.txt")), "r", encoding="utf-8").read().strip()
+        adres = open(resource_path(os.path.normpath("static/seller_address.txt")), "r", encoding="utf-8").read().strip()
         pickup = f"Miejsce odbioru pojazdu: {adres}."
         lines = simpleSplit(pickup, font, font_size, max_width)
         for line in lines:
